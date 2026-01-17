@@ -1,197 +1,84 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>WebRTC Video Call App</title>
+  <title>PeerJS Video Call</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- PeerJS CDN -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
   <style>
-    body { background:#0f172a; color:#fff; font-family:Arial; text-align:center; padding:10px; }
-    video { width:45%; border-radius:12px; margin:5px; background:black; }
-    input { padding:10px; border-radius:6px; border:none; }
-    .user { cursor:pointer; margin:5px; padding:5px; background:#334155; border-radius:6px; display:inline-block; }
-    .controls button { padding:10px 14px; margin:5px; border:none; border-radius:8px; cursor:pointer; }
-    .end { background:#ef4444; }
-    .mute { background:#64748b; }
-    .cam { background:#3b82f6; }
-    .status { margin:10px; color:#38bdf8; }
+    body {
+      background:#111;
+      color:#fff;
+      text-align:center;
+      font-family:Arial;
+    }
+    video {
+      width:45%;
+      margin:5px;
+      background:black;
+      border-radius:10px;
+    }
+    input, button {
+      padding:10px;
+      margin:5px;
+      font-size:16px;
+    }
   </style>
 </head>
 <body>
 
-<h2>📞 Free WebRTC Video Call</h2>
+<h2>🎥 PeerJS Video & Audio Call</h2>
 
-<input id="username" placeholder="Enter your username">
-<button id="setNameBtn">Set Username</button>
-<p>Your username: <b id="myId">Not set</b></p>
+<p>Your ID: <b id="myId">connecting...</b></p>
 
-<div id="userList"><b>Online Users:</b></div>
+<input id="callId" placeholder="Enter ID to call">
+<button onclick="callUser()">Call</button>
 
-<div class="controls">
-  <button class="end" id="endBtn">❌ End Call</button>
-  <button class="mute" id="muteBtn">🔇 Mute</button>
-  <button class="cam" id="camBtn">🎥 Camera</button>
-</div>
-
-<p class="status" id="status">Status: Idle</p>
+<br><br>
 
 <video id="localVideo" autoplay muted></video>
 <video id="remoteVideo" autoplay></video>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, remove, push, child, get } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+<script>
+/* 1️⃣ Create Peer */
+const peer = new Peer({
+  debug: 2
+});
 
-// ===== FIREBASE INIT =====
-const firebaseConfig = {
-  apiKey: "AIzaSyDoabY1ksPwyZ0frzf5ll3yq6n4LZDT7z4",
-  authDomain: "video-app-7ace2.firebaseapp.com",
-  databaseURL: "https://video-app-7ace2-default-rtdb.firebaseio.com",
-  projectId: "video-app-7ace2",
-  storageBucket: "video-app-7ace2.appspot.com",
-  messagingSenderId: "1006315639241",
-  appId: "1:1006315639241:web:de262b95e926484acd5818"
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+/* 2️⃣ Show your ID */
+peer.on("open", id => {
+  document.getElementById("myId").innerText = id;
+});
 
-// ===== GLOBALS =====
-let myUsername = "";
+/* 3️⃣ Get camera & mic */
 let localStream;
-let remoteStream;
-let pc;
-let callChannel = null;
-let micOn = true;
-let camOn = true;
+navigator.mediaDevices.getUserMedia({ video:true, audio:true })
+.then(stream => {
+  localStream = stream;
+  document.getElementById("localVideo").srcObject = stream;
+})
+.catch(err => {
+  alert("Camera error: " + err);
+});
 
-// ===== UI =====
-const myIdEl = document.getElementById("myId");
-const statusEl = document.getElementById("status");
-const localVideo = document.getElementById("localVideo");
-const remoteVideo = document.getElementById("remoteVideo");
-const userListDiv = document.getElementById("userList");
-
-// ===== ICE SERVERS =====
-const servers = { 
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "turn:numb.viagenie.ca", credential: "muazkh", username: "webrtc@live.com" }
-  ]
-};
-
-// ===== SET USERNAME =====
-document.getElementById("setNameBtn").onclick = async () => {
-  const name = document.getElementById("username").value.trim();
-  if (!name) return alert("Enter a username!");
-  myUsername = name;
-  myIdEl.innerText = myUsername;
-  statusEl.innerText = "Status: Ready";
-
-  // Register online user
-  set(ref(db, "users/" + myUsername), { online: true });
-  window.addEventListener("beforeunload", () => remove(ref(db, "users/" + myUsername)));
-
-  // Get local stream
-  localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-  localVideo.srcObject = localStream;
-
-  // Watch online users
-  onValue(ref(db, "users"), snapshot => {
-    userListDiv.innerHTML = "<b>Online Users:</b> ";
-    snapshot.forEach(child => {
-      const uname = child.key;
-      if (uname !== myUsername) {
-        const div = document.createElement("div");
-        div.innerText = uname;
-        div.className = "user";
-        div.onclick = () => startCall(uname);
-        userListDiv.appendChild(div);
-      }
-    });
+/* 4️⃣ Answer calls */
+peer.on("call", call => {
+  call.answer(localStream);
+  call.on("stream", stream => {
+    document.getElementById("remoteVideo").srcObject = stream;
   });
+});
 
-  // Listen for incoming offers
-  onValue(ref(db, "calls"), snapshot => {
-    snapshot.forEach(child => {
-      const data = child.val();
-      if (data.to === myUsername && !callChannel) {
-        acceptCall(child.key, data);
-      }
-    });
+/* 5️⃣ Call another user */
+function callUser() {
+  const id = document.getElementById("callId").value;
+  const call = peer.call(id, localStream);
+  call.on("stream", stream => {
+    document.getElementById("remoteVideo").srcObject = stream;
   });
-};
-
-// ===== START CALL =====
-async function startCall(target) {
-  callChannel = push(ref(db, "calls"));
-  pc = new RTCPeerConnection(servers);
-
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-  pc.ontrack = event => {
-    remoteVideo.srcObject = event.streams[0];
-    remoteStream = event.streams[0];
-  };
-
-  pc.onicecandidate = event => {
-    if (event.candidate) {
-      set(child(callChannel, "iceCandidates/" + Date.now()), event.candidate.toJSON());
-    }
-  };
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  await set(callChannel, { from: myUsername, to: target, type: "offer", sdp: offer.sdp });
-
-  statusEl.innerText = "Calling " + target;
 }
-
-// ===== ACCEPT CALL =====
-async function acceptCall(callId, data) {
-  callChannel = ref(db, "calls/" + callId);
-  pc = new RTCPeerConnection(servers);
-
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-  pc.ontrack = event => {
-    remoteVideo.srcObject = event.streams[0];
-    remoteStream = event.streams[0];
-  };
-
-  pc.onicecandidate = event => {
-    if (event.candidate) {
-      set(child(callChannel, "iceCandidates/" + Date.now()), event.candidate.toJSON());
-    }
-  };
-
-  await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  set(child(callChannel, "answer"), { type: "answer", sdp: answer.sdp });
-
-  statusEl.innerText = "In call with " + data.from;
-}
-
-// ===== END CALL =====
-document.getElementById("endBtn").onclick = () => {
-  if (pc) pc.close();
-  callChannel = null;
-  statusEl.innerText = "Call ended";
-  remoteVideo.srcObject = null;
-};
-
-// ===== MUTE / CAMERA =====
-document.getElementById("muteBtn").onclick = () => {
-  micOn = !micOn;
-  if (localStream) localStream.getAudioTracks()[0].enabled = micOn;
-  statusEl.innerText = micOn ? "Mic ON" : "Mic MUTED";
-};
-
-document.getElementById("camBtn").onclick = () => {
-  camOn = !camOn;
-  if (localStream) localStream.getVideoTracks()[0].enabled = camOn;
-  statusEl.innerText = camOn ? "Camera ON" : "Camera OFF";
-};
 </script>
 
 </body>
