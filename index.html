@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Free Video Call</title>
+  <title>Video Call App</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
@@ -12,7 +12,7 @@
 </head>
 <body>
 
-<h2>🎥 Video & Audio Call (WORKS)</h2>
+<h2>🎥 Video & Audio Call</h2>
 
 <p>Your ID: <b id="myId">loading...</b></p>
 
@@ -24,31 +24,29 @@
 <video id="remote" autoplay></video>
 
 <script>
-const peer = new Peer(undefined, {
-  host: "peerjs.com",
-  secure: true,
-  port: 443
-});
+const peer = new Peer();
 
 let localStream;
 
-peer.on("open", id => myId.innerText = id);
+peer.on("open", id => {
+  document.getElementById("myId").innerText = id;
+});
 
 navigator.mediaDevices.getUserMedia({ video:true, audio:true })
 .then(stream => {
   localStream = stream;
-  local.srcObject = stream;
+  document.getElementById("local").srcObject = stream;
 });
 
 peer.on("call", call => {
   call.answer(localStream);
-  call.on("stream", s => remote.srcObject = s);
+  call.on("stream", s => document.getElementById("remote").srcObject = s);
 });
 
 function callUser() {
-  const id = callId.value;
+  const id = document.getElementById("callId").value;
   const call = peer.call(id, localStream);
-  call.on("stream", s => remote.srcObject = s);
+  call.on("stream", s => document.getElementById("remote").srcObject = s);
 }
 </script>
 
