@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>PeerJS Video Call with Firebase</title>
+  <title>Reliable PeerJS Video Call</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
@@ -11,7 +11,6 @@
     video { width:45%; border-radius:12px; margin:5px; background:black; }
     input { padding:10px; border-radius:6px; border:none; }
     .controls button { padding:10px 14px; margin:5px; border:none; border-radius:8px; cursor:pointer; }
-    .call { background:#22c55e; }
     .end { background:#ef4444; }
     .mute { background:#64748b; }
     .cam { background:#3b82f6; }
@@ -43,9 +42,9 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, remove, get, child } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
-// ===== FIREBASE INIT =====
+// ====== FIREBASE INIT ======
 const firebaseConfig = {
   apiKey: "AIzaSyDoabY1ksPwyZ0frzf5ll3yq6n4LZDT7z4",
   authDomain: "video-app-7ace2.firebaseapp.com",
@@ -55,11 +54,10 @@ const firebaseConfig = {
   messagingSenderId: "1006315639241",
   appId: "1:1006315639241:web:de262b95e926484acd5818"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// ===== GLOBALS =====
+// ====== GLOBALS ======
 let peer;
 let localStream;
 let currentCall;
@@ -68,44 +66,57 @@ let camOn = true;
 let myUsername = "";
 let myPeerId = "";
 
-// ===== UI ELEMENTS =====
+// ====== UI ELEMENTS ======
 const myIdEl = document.getElementById("myId");
 const statusEl = document.getElementById("status");
 const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
 const userListDiv = document.getElementById("userList");
 
-// ===== SET USERNAME =====
+// ====== SET USERNAME ======
 document.getElementById("setNameBtn").onclick = async () => {
   const name = document.getElementById("username").value.trim();
   if (!name) return alert("Enter a username!");
   myUsername = name;
 
-  // Create unique PeerJS ID
+  // Generate unique PeerJS ID
   myPeerId = myUsername + "_" + Math.floor(Math.random()*10000);
-  
+
   // Destroy previous peer if exists
   if (peer) peer.destroy();
 
-  // Create PeerJS
-  peer = new Peer(myPeerId, { debug: 2 });
+  // ====== PEERJS WITH TURN/STUN ======
+  peer = new Peer(myPeerId, {
+    host: '0.peerjs.com', 
+    port: 443, 
+    path: '/',
+    secure: true,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:numb.viagenie.ca', credential: 'muazkh', username: 'webrtc@live.com' }
+      ]
+    },
+    debug: 2
+  });
 
-  peer.on("open", id => {
+  // ====== ON OPEN ======
+  peer.on('open', id => {
     myIdEl.innerText = myUsername + " (" + id + ")";
     statusEl.innerText = "Status: Ready";
 
     // Register in Firebase
-    set(ref(db, "users/" + myUsername), { peerId: myPeerId });
+    set(ref(db, "users/" + myUsername), { peerId: id });
 
-    // Remove from Firebase on disconnect
+    // Remove on unload
     window.addEventListener("beforeunload", () => remove(ref(db, "users/" + myUsername)));
   });
 
-  // ===== Camera & Mic =====
+  // ====== CAMERA & MIC ======
   localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
   localVideo.srcObject = localStream;
 
-  // ===== Incoming call =====
+  // ====== INCOMING CALL ======
   peer.on("call", call => {
     currentCall = call;
     call.answer(localStream);
@@ -114,7 +125,7 @@ document.getElementById("setNameBtn").onclick = async () => {
     call.on("close", () => endCall());
   });
 
-  // ===== Live online user list =====
+  // ====== ONLINE USERS LIST ======
   onValue(ref(db, "users"), snapshot => {
     userListDiv.innerHTML = "<b>Online Users:</b> ";
     snapshot.forEach(child => {
@@ -131,40 +142,42 @@ document.getElementById("setNameBtn").onclick = async () => {
   });
 };
 
-// ===== CALL USER =====
+// ====== CALL USER ======
 function callUser(targetPeerId, targetName) {
   if (!peer || !localStream) return alert("Set username and allow camera/mic first");
   currentCall = peer.call(targetPeerId, localStream);
   statusEl.innerText = "Status: Calling " + targetName;
+
   currentCall.on("stream", stream => {
     remoteVideo.srcObject = stream;
     statusEl.innerText = "Status: In call with " + targetName;
   });
+
   currentCall.on("close", () => endCall());
 }
 
-// ===== END CALL =====
+// ====== END CALL ======
 function endCall() {
   if (currentCall) currentCall.close();
   remoteVideo.srcObject = null;
   statusEl.innerText = "Status: Call ended";
 }
 
-// ===== MUTE / UNMUTE =====
+// ====== MUTE / UNMUTE ======
 document.getElementById("muteBtn").onclick = () => {
   micOn = !micOn;
   if (localStream) localStream.getAudioTracks()[0].enabled = micOn;
   statusEl.innerText = micOn ? "Mic ON" : "Mic MUTED";
 };
 
-// ===== CAMERA ON / OFF =====
+// ====== CAMERA ON / OFF ======
 document.getElementById("camBtn").onclick = () => {
   camOn = !camOn;
   if (localStream) localStream.getVideoTracks()[0].enabled = camOn;
   statusEl.innerText = camOn ? "Camera ON" : "Camera OFF";
 };
 
-// ===== END CALL BUTTON =====
+// ====== END CALL BUTTON ======
 document.getElementById("endBtn").onclick = endCall;
 
 </script>
