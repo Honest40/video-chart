@@ -1,65 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>PeerJS Call App</title>
+  <title>PeerJS Video Call with Username</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <!-- PeerJS -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
   <style>
-    body {
-      background:#0f172a;
-      color:#fff;
-      font-family:Arial;
-      text-align:center;
-      margin:0;
-      padding:10px;
-    }
+    body { background:#0f172a; color:#fff; font-family:Arial; text-align:center; margin:0; padding:10px; }
     h2 { margin-top:5px; }
-
-    video {
-      width:45%;
-      background:black;
-      border-radius:12px;
-      margin:5px;
-    }
-
-    .controls button {
-      padding:10px 14px;
-      margin:5px;
-      font-size:15px;
-      border:none;
-      border-radius:8px;
-      cursor:pointer;
-    }
-
+    video { width:45%; background:black; border-radius:12px; margin:5px; }
+    .controls button { padding:10px 14px; margin:5px; font-size:15px; border:none; border-radius:8px; cursor:pointer; }
     .call { background:#22c55e; }
     .end { background:#ef4444; }
     .mute { background:#64748b; }
     .cam { background:#3b82f6; }
-
-    input {
-      padding:10px;
-      width:220px;
-      border-radius:6px;
-      border:none;
-    }
-
-    .status {
-      margin:10px;
-      color:#38bdf8;
-    }
+    input { padding:10px; width:200px; border-radius:6px; border:none; }
+    .status { margin:10px; color:#38bdf8; }
   </style>
 </head>
 <body>
 
-<h2>📞 PeerJS Video & Audio Call</h2>
+<h2>📞 Video & Audio Call (Username)</h2>
 
-<p>Your ID: <b id="myId">Connecting...</b></p>
+<input id="username" placeholder="Enter your username"><br>
+<button onclick="setUsername()">Set Username</button>
 
-<input id="callId" placeholder="Enter ID to call">
-<br>
+<p>Your username: <b id="myId">Not set</b></p>
+
+<input id="callName" placeholder="Enter username to call"><br>
 
 <div class="controls">
   <button class="call" onclick="callUser()">📞 Call</button>
@@ -74,55 +42,69 @@
 <video id="remoteVideo" autoplay></video>
 
 <script>
-/* ====== PeerJS Setup ====== */
-const peer = new Peer({ debug: 2 });
+let peer;
 let localStream;
 let currentCall;
 let micOn = true;
 let camOn = true;
+let myUsername = "";
 
-/* ====== Show ID ====== */
-peer.on("open", id => {
-  myId.innerText = id;
-});
+/* ====== Set username ====== */
+function setUsername() {
+  const name = document.getElementById("username").value.trim();
+  if (!name) return alert("Enter a username!");
+  
+  myUsername = name;
 
-/* ====== Camera & Mic ====== */
-navigator.mediaDevices.getUserMedia({ video:true, audio:true })
-.then(stream => {
-  localStream = stream;
-  localVideo.srcObject = stream;
-});
+  // Destroy previous peer if exists
+  if (peer) peer.destroy();
 
-/* ====== Incoming Call ====== */
-peer.on("call", call => {
-  currentCall = call;
-  call.answer(localStream);
-  status.innerText = "Status: In call";
+  // Create PeerJS with username as ID
+  peer = new Peer(myUsername, { debug: 2 });
 
-  call.on("stream", stream => {
-    remoteVideo.srcObject = stream;
+  peer.on("open", id => {
+    myId.innerText = id;
+    status.innerText = "Status: Ready";
   });
 
-  call.on("close", () => endCall());
-});
+  // Incoming call
+  peer.on("call", call => {
+    currentCall = call;
+    call.answer(localStream);
+    status.innerText = "Status: In call";
 
-/* ====== Outgoing Call ====== */
+    call.on("stream", stream => remoteVideo.srcObject = stream);
+
+    call.on("close", () => endCall());
+  });
+
+  // Get camera & mic
+  navigator.mediaDevices.getUserMedia({ video:true, audio:true })
+  .then(stream => {
+    localStream = stream;
+    localVideo.srcObject = stream;
+  })
+  .catch(err => alert("Camera error: " + err));
+}
+
+/* ====== Outgoing call ====== */
 function callUser() {
-  const id = callId.value;
-  if (!id) return alert("Enter ID");
+  if (!peer) return alert("Set your username first!");
+  const target = document.getElementById("callName").value.trim();
+  if (!target) return alert("Enter username to call");
 
-  currentCall = peer.call(id, localStream);
-  status.innerText = "Status: Calling...";
+  currentCall = peer.call(target, localStream);
+  status.innerText = "Status: Calling " + target;
 
   currentCall.on("stream", stream => {
     remoteVideo.srcObject = stream;
-    status.innerText = "Status: In call";
+    status.innerText = "Status: In call with " + target;
   });
 
   currentCall.on("close", () => endCall());
 }
 
-/* ====== End Call ====== */
+/* ====== End call ====== */
 function endCall() {
   if (currentCall) currentCall.close();
   remoteVideo.srcObject = null;
@@ -132,14 +114,14 @@ function endCall() {
 /* ====== Mute / Unmute ====== */
 function toggleMute() {
   micOn = !micOn;
-  localStream.getAudioTracks()[0].enabled = micOn;
+  if (localStream) localStream.getAudioTracks()[0].enabled = micOn;
   status.innerText = micOn ? "Mic ON" : "Mic MUTED";
 }
 
-/* ====== Camera ON / OFF ====== */
+/* ====== Camera On / Off ====== */
 function toggleCamera() {
   camOn = !camOn;
-  localStream.getVideoTracks()[0].enabled = camOn;
+  if (localStream) localStream.getVideoTracks()[0].enabled = camOn;
   status.innerText = camOn ? "Camera ON" : "Camera OFF";
 }
 </script>
