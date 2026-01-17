@@ -1,26 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Firebase Video Call</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase WebRTC Call</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { background:#111; color:#fff; text-align:center; font-family:Arial; }
     video { width:45%; margin:5px; border-radius:10px; background:black; }
-    button, input { padding:10px; margin:5px; font-size:16px; }
+    button,input { padding:10px; margin:5px; }
   </style>
 </head>
 <body>
 
-<h2>🔥 Firebase Video & Audio Call</h2>
+<h2>🔥 Firebase Video Call (WORKING)</h2>
 
 <video id="localVideo" autoplay muted></video>
 <video id="remoteVideo" autoplay></video><br>
 
 <input id="roomId" placeholder="Room ID"><br>
-
-<button onclick="startCamera()">Start Camera</button>
-<button onclick="createRoom()">Create Room</button>
-<button onclick="joinRoom()">Join Room</button>
+<button onclick="start()">Start Camera</button>
+<button onclick="create()">Create Room</button>
+<button onclick="join()">Join Room</button>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
@@ -28,7 +27,6 @@ import {
   getDatabase, ref, set, get, push, onChildAdded
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
-/* 🔥 Firebase config */
 const firebaseConfig = {
   apiKey: "AIzaSyDoabY1ksPwyZ0frzf5ll3yq6n4LZDT7z4",
   authDomain: "video-app-7ace2.firebaseapp.com",
@@ -42,61 +40,65 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-/* 🌍 STUN server (FREE) */
 const pc = new RTCPeerConnection({
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 });
 
 let localStream;
+
 pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
 
-pc.onicecandidate = e => {
-  if (e.candidate) {
-    const room = roomId.value;
-    push(ref(db, "rooms/" + room + "/candidates"), e.candidate);
-  }
-};
-
-/* 🎥 Camera */
-window.startCamera = async () => {
+async function start() {
   localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
   localVideo.srcObject = localStream;
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-};
+}
 
-/* 📤 Create room */
-window.createRoom = async () => {
+async function create() {
   const room = roomId.value;
+  const callerCandidates = ref(db, `rooms/${room}/callerCandidates`);
+
+  pc.onicecandidate = e => {
+    if (e.candidate) push(callerCandidates, e.candidate.toJSON());
+  };
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  await set(ref(db, "rooms/" + room + "/offer"), offer);
+  await set(ref(db, `rooms/${room}/offer`), offer);
 
-  const answerRef = ref(db, "rooms/" + room + "/answer");
-  onChildAdded(ref(db, "rooms/" + room + "/candidates"), snap => {
+  onChildAdded(ref(db, `rooms/${room}/calleeCandidates`), snap => {
     pc.addIceCandidate(new RTCIceCandidate(snap.val()));
   });
 
-  onChildAdded(answerRef, snap => {
-    pc.setRemoteDescription(snap.val());
+  const answerSnap = await new Promise(resolve => {
+    onChildAdded(ref(db, `rooms/${room}/answer`), resolve);
   });
-};
+  await pc.setRemoteDescription(answerSnap.val());
+}
 
-/* 📥 Join room */
-window.joinRoom = async () => {
+async function join() {
   const room = roomId.value;
+  const calleeCandidates = ref(db, `rooms/${room}/calleeCandidates`);
 
-  const offerSnap = await get(ref(db, "rooms/" + room + "/offer"));
+  pc.onicecandidate = e => {
+    if (e.candidate) push(calleeCandidates, e.candidate.toJSON());
+  };
+
+  const offerSnap = await get(ref(db, `rooms/${room}/offer`));
   await pc.setRemoteDescription(offerSnap.val());
 
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  await set(ref(db, "rooms/" + room + "/answer"), answer);
+  await set(ref(db, `rooms/${room}/answer`), answer);
 
-  onChildAdded(ref(db, "rooms/" + room + "/candidates"), snap => {
+  onChildAdded(ref(db, `rooms/${room}/callerCandidates`), snap => {
     pc.addIceCandidate(new RTCIceCandidate(snap.val()));
   });
-};
+}
+
+window.start = start;
+window.create = create;
+window.join = join;
 </script>
 
 </body>
