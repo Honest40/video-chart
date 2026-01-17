@@ -1,52 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Video Call App</title>
+  <title>PeerJS Video Call</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- PeerJS CDN -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
   <style>
-    body { background:#111; color:#fff; text-align:center; font-family:Arial; }
-    video { width:45%; margin:5px; border-radius:10px; background:black; }
-    input, button { padding:10px; margin:5px; }
+    body {
+      background:#111;
+      color:#fff;
+      text-align:center;
+      font-family:Arial;
+    }
+    video {
+      width:45%;
+      margin:5px;
+      background:black;
+      border-radius:10px;
+    }
+    input, button {
+      padding:10px;
+      margin:5px;
+      font-size:16px;
+    }
   </style>
 </head>
 <body>
 
-<h2>🎥 Video & Audio Call</h2>
+<h2>🎥 PeerJS Video & Audio Call</h2>
 
-<p>Your ID: <b id="myId">loading...</b></p>
+<p>Your ID: <b id="myId">connecting...</b></p>
 
 <input id="callId" placeholder="Enter ID to call">
 <button onclick="callUser()">Call</button>
 
 <br><br>
-<video id="local" autoplay muted></video>
-<video id="remote" autoplay></video>
+
+<video id="localVideo" autoplay muted></video>
+<video id="remoteVideo" autoplay></video>
 
 <script>
-const peer = new Peer();
+/* 1️⃣ Create Peer */
+const peer = new Peer({
+  debug: 2
+});
 
-let localStream;
-
+/* 2️⃣ Show your ID */
 peer.on("open", id => {
   document.getElementById("myId").innerText = id;
 });
 
+/* 3️⃣ Get camera & mic */
+let localStream;
 navigator.mediaDevices.getUserMedia({ video:true, audio:true })
 .then(stream => {
   localStream = stream;
-  document.getElementById("local").srcObject = stream;
+  document.getElementById("localVideo").srcObject = stream;
+})
+.catch(err => {
+  alert("Camera error: " + err);
 });
 
+/* 4️⃣ Answer calls */
 peer.on("call", call => {
   call.answer(localStream);
-  call.on("stream", s => document.getElementById("remote").srcObject = s);
+  call.on("stream", stream => {
+    document.getElementById("remoteVideo").srcObject = stream;
+  });
 });
 
+/* 5️⃣ Call another user */
 function callUser() {
   const id = document.getElementById("callId").value;
   const call = peer.call(id, localStream);
-  call.on("stream", s => document.getElementById("remote").srcObject = s);
+  call.on("stream", stream => {
+    document.getElementById("remoteVideo").srcObject = stream;
+  });
 }
 </script>
 
