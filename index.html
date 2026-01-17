@@ -1,83 +1,146 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>PeerJS Video Call</title>
+  <title>PeerJS Call App</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- PeerJS CDN -->
+  <!-- PeerJS -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
   <style>
     body {
-      background:#111;
+      background:#0f172a;
       color:#fff;
-      text-align:center;
       font-family:Arial;
+      text-align:center;
+      margin:0;
+      padding:10px;
     }
+    h2 { margin-top:5px; }
+
     video {
       width:45%;
-      margin:5px;
       background:black;
-      border-radius:10px;
-    }
-    input, button {
-      padding:10px;
+      border-radius:12px;
       margin:5px;
-      font-size:16px;
+    }
+
+    .controls button {
+      padding:10px 14px;
+      margin:5px;
+      font-size:15px;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+    }
+
+    .call { background:#22c55e; }
+    .end { background:#ef4444; }
+    .mute { background:#64748b; }
+    .cam { background:#3b82f6; }
+
+    input {
+      padding:10px;
+      width:220px;
+      border-radius:6px;
+      border:none;
+    }
+
+    .status {
+      margin:10px;
+      color:#38bdf8;
     }
   </style>
 </head>
 <body>
 
-<h2>🎥 PeerJS Video & Audio Call</h2>
+<h2>📞 PeerJS Video & Audio Call</h2>
 
-<p>Your ID: <b id="myId">connecting...</b></p>
+<p>Your ID: <b id="myId">Connecting...</b></p>
 
 <input id="callId" placeholder="Enter ID to call">
-<button onclick="callUser()">Call</button>
+<br>
 
-<br><br>
+<div class="controls">
+  <button class="call" onclick="callUser()">📞 Call</button>
+  <button class="end" onclick="endCall()">❌ End</button><br>
+  <button class="mute" onclick="toggleMute()">🔇 Mute</button>
+  <button class="cam" onclick="toggleCamera()">🎥 Camera</button>
+</div>
+
+<p class="status" id="status">Status: Idle</p>
 
 <video id="localVideo" autoplay muted></video>
 <video id="remoteVideo" autoplay></video>
 
 <script>
-/* 1️⃣ Create Peer */
-const peer = new Peer({
-  debug: 2
-});
-
-/* 2️⃣ Show your ID */
-peer.on("open", id => {
-  document.getElementById("myId").innerText = id;
-});
-
-/* 3️⃣ Get camera & mic */
+/* ====== PeerJS Setup ====== */
+const peer = new Peer({ debug: 2 });
 let localStream;
+let currentCall;
+let micOn = true;
+let camOn = true;
+
+/* ====== Show ID ====== */
+peer.on("open", id => {
+  myId.innerText = id;
+});
+
+/* ====== Camera & Mic ====== */
 navigator.mediaDevices.getUserMedia({ video:true, audio:true })
 .then(stream => {
   localStream = stream;
-  document.getElementById("localVideo").srcObject = stream;
-})
-.catch(err => {
-  alert("Camera error: " + err);
+  localVideo.srcObject = stream;
 });
 
-/* 4️⃣ Answer calls */
+/* ====== Incoming Call ====== */
 peer.on("call", call => {
+  currentCall = call;
   call.answer(localStream);
+  status.innerText = "Status: In call";
+
   call.on("stream", stream => {
-    document.getElementById("remoteVideo").srcObject = stream;
+    remoteVideo.srcObject = stream;
   });
+
+  call.on("close", () => endCall());
 });
 
-/* 5️⃣ Call another user */
+/* ====== Outgoing Call ====== */
 function callUser() {
-  const id = document.getElementById("callId").value;
-  const call = peer.call(id, localStream);
-  call.on("stream", stream => {
-    document.getElementById("remoteVideo").srcObject = stream;
+  const id = callId.value;
+  if (!id) return alert("Enter ID");
+
+  currentCall = peer.call(id, localStream);
+  status.innerText = "Status: Calling...";
+
+  currentCall.on("stream", stream => {
+    remoteVideo.srcObject = stream;
+    status.innerText = "Status: In call";
   });
+
+  currentCall.on("close", () => endCall());
+}
+
+/* ====== End Call ====== */
+function endCall() {
+  if (currentCall) currentCall.close();
+  remoteVideo.srcObject = null;
+  status.innerText = "Status: Call ended";
+}
+
+/* ====== Mute / Unmute ====== */
+function toggleMute() {
+  micOn = !micOn;
+  localStream.getAudioTracks()[0].enabled = micOn;
+  status.innerText = micOn ? "Mic ON" : "Mic MUTED";
+}
+
+/* ====== Camera ON / OFF ====== */
+function toggleCamera() {
+  camOn = !camOn;
+  localStream.getVideoTracks()[0].enabled = camOn;
+  status.innerText = camOn ? "Camera ON" : "Camera OFF";
 }
 </script>
 
