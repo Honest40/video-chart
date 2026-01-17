@@ -8,32 +8,21 @@
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
   <style>
-    body {
-      background:#111;
-      color:#fff;
-      text-align:center;
-      font-family:Arial;
-    }
-    video {
-      width:45%;
-      margin:5px;
-      background:black;
-      border-radius:10px;
-    }
-    input, button {
-      padding:10px;
-      margin:5px;
-      font-size:16px;
-    }
+    body { background:#111; color:#fff; text-align:center; font-family:Arial; }
+    video { width:45%; margin:5px; background:black; border-radius:10px; }
+    input, button { padding:10px; margin:5px; font-size:16px; }
   </style>
 </head>
 <body>
 
 <h2>🎥 PeerJS Video & Audio Call</h2>
 
-<p>Your ID: <b id="myId">connecting...</b></p>
+<input id="username" placeholder="Enter your username">
+<button id="setNameBtn">Set Username</button>
 
-<input id="callId" placeholder="Enter ID to call">
+<p>Your ID: <b id="myId">Not set</b></p>
+
+<input id="callId" placeholder="Enter username to call">
 <button onclick="callUser()">Call</button>
 
 <br><br>
@@ -42,43 +31,74 @@
 <video id="remoteVideo" autoplay></video>
 
 <script>
-/* 1️⃣ Create Peer */
-const peer = new Peer({
-  debug: 2
-});
-
-/* 2️⃣ Show your ID */
-peer.on("open", id => {
-  document.getElementById("myId").innerText = id;
-});
-
-/* 3️⃣ Get camera & mic */
+let peer;
 let localStream;
-navigator.mediaDevices.getUserMedia({ video:true, audio:true })
-.then(stream => {
-  localStream = stream;
-  document.getElementById("localVideo").srcObject = stream;
-})
-.catch(err => {
-  alert("Camera error: " + err);
-});
+let myUsername;
+let peerMap = {}; // maps username -> peerId (optional if you use Firebase later)
 
-/* 4️⃣ Answer calls */
-peer.on("call", call => {
-  call.answer(localStream);
-  call.on("stream", stream => {
-    document.getElementById("remoteVideo").srcObject = stream;
+// ===== Get camera & mic =====
+async function initCamera() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+    document.getElementById("localVideo").srcObject = localStream;
+  } catch(err) {
+    alert("Camera error: " + err);
+  }
+}
+
+// ===== Set username & PeerJS ID =====
+document.getElementById("setNameBtn").onclick = () => {
+  myUsername = document.getElementById("username").value.trim();
+  if (!myUsername) return alert("Enter a username");
+
+  // Create unique PeerJS ID using username
+  const uniqueId = myUsername + "_" + Math.floor(Math.random()*10000);
+
+  // Destroy previous peer if exists
+  if (peer) peer.destroy();
+
+  peer = new Peer(uniqueId, {
+    debug: 2,
+    config: {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "turn:numb.viagenie.ca", credential: "muazkh", username: "webrtc@live.com" }
+      ]
+    }
   });
-});
 
-/* 5️⃣ Call another user */
+  peer.on("open", id => {
+    document.getElementById("myId").innerText = id;
+  });
+
+  // ===== Answer incoming calls =====
+  peer.on("call", call => {
+    call.answer(localStream);
+    call.on("stream", stream => {
+      document.getElementById("remoteVideo").srcObject = stream;
+    });
+  });
+};
+
+// ===== Call another user =====
 function callUser() {
-  const id = document.getElementById("callId").value;
-  const call = peer.call(id, localStream);
+  const target = document.getElementById("callId").value.trim();
+  if (!target) return alert("Enter a username to call");
+  if (!localStream) return alert("Camera not ready");
+  
+  // For now, assume target uses same pattern: username_random
+  // In real app, you’d use Firebase to map username -> PeerJS ID
+  const targetId = prompt("Enter full PeerJS ID of " + target + " (e.g., username_1234)");
+  if (!targetId) return;
+
+  const call = peer.call(targetId, localStream);
   call.on("stream", stream => {
     document.getElementById("remoteVideo").srcObject = stream;
   });
 }
+
+// Initialize camera on load
+initCamera();
 </script>
 
 </body>
