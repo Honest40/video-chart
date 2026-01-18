@@ -2,40 +2,77 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>StreamX Live</title>
+<title>StreamX Live Pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<!-- PeerJS -->
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
 <style>
+:root{
+  --bg:#020617;
+  --card:#0f172a;
+  --green:#22c55e;
+  --red:#ef4444;
+}
 body{
   margin:0;
-  font-family:Arial;
-  background:#020617;
+  font-family:system-ui,Arial;
+  background:var(--bg);
   color:white;
-  text-align:center;
 }
 header{
   padding:15px;
+  text-align:center;
   background:black;
+}
+.container{
+  max-width:900px;
+  margin:auto;
+  padding:20px;
+}
+.card{
+  background:var(--card);
+  padding:20px;
+  border-radius:15px;
+  margin-bottom:20px;
 }
 video{
-  width:95%;
-  max-width:600px;
+  width:100%;
+  border-radius:15px;
   background:black;
-  border-radius:10px;
 }
-input,button{
-  width:90%;
-  max-width:400px;
+button,input{
+  width:100%;
   padding:12px;
-  margin:8px;
-  border-radius:8px;
+  margin-top:10px;
+  border-radius:10px;
   border:none;
+  font-size:16px;
 }
 button{
-  background:#22c55e;
+  background:var(--green);
   font-weight:bold;
+}
+.badge-live{
+  display:inline-block;
+  background:var(--red);
+  padding:4px 10px;
+  border-radius:20px;
+  font-size:12px;
+}
+.status{
+  font-size:14px;
+  opacity:.8;
+  margin-top:5px;
+}
+.controls{
+  display:flex;
+  gap:10px;
+  margin-top:10px;
+}
+.controls button{
+  flex:1;
 }
 </style>
 </head>
@@ -43,52 +80,109 @@ button{
 <body>
 
 <header>
-  <h2>📡 StreamX Live</h2>
+  <h2>📡 StreamX Live Pro</h2>
+  <span class="badge-live">LIVE SYSTEM</span>
 </header>
 
-<button onclick="startStream()">🎥 Start Live</button><br>
-<input id="myId" placeholder="Your Stream ID" readonly>
+<div class="container">
 
-<hr>
+  <!-- STATUS -->
+  <div class="card">
+    <strong>Status:</strong>
+    <div id="status" class="status">Connecting…</div>
+  </div>
 
-<input id="streamId" placeholder="Enter Stream ID">
-<button onclick="watchStream()">▶ Watch Live</button>
+  <!-- BROADCAST -->
+  <div class="card">
+    <h3>🎥 Go Live</h3>
+    <button onclick="startStream()">Start Live Stream</button>
+    <input id="myId" placeholder="Your Stream ID will appear here" readonly>
 
-<br><br>
-<video id="video" autoplay playsinline controls></video>
+    <div class="controls">
+      <button onclick="toggleMic()">Mute / Unmute</button>
+      <button onclick="toggleCam()">Camera On / Off</button>
+    </div>
+  </div>
+
+  <!-- VIEW -->
+  <div class="card">
+    <h3>👀 Watch Live</h3>
+    <input id="streamId" placeholder="Enter Stream ID">
+    <button onclick="watchStream()">Watch Live</button>
+  </div>
+
+  <!-- VIDEO -->
+  <div class="card">
+    <h3>🔴 Live Video</h3>
+    <video id="video" autoplay playsinline controls></video>
+  </div>
+
+</div>
 
 <script>
+let localStream;
+let micOn = true;
+let camOn = true;
+
+/* === RELIABLE PEER CONFIG === */
 const peer = new Peer(undefined,{
-  host:'peerjs.com',
-  secure:true,
-  port:443
+  host: '0.peerjs.com',
+  port: 443,
+  secure: true,
+  path: '/'
 });
 
+/* === CONNECTION STATUS === */
 peer.on('open', id=>{
   document.getElementById('myId').value = id;
+  document.getElementById('status').innerText = "Connected ✔ Stream ID ready";
 });
 
+peer.on('error', err=>{
+  document.getElementById('status').innerText =
+    "Connection error: " + err.type;
+});
+
+/* === START STREAM === */
 function startStream(){
   navigator.mediaDevices.getUserMedia({video:true,audio:true})
   .then(stream=>{
+    localStream = stream;
     document.getElementById('video').srcObject = stream;
+    document.getElementById('status').innerText = "LIVE 🔴 Broadcasting";
 
     peer.on('call', call=>{
       call.answer(stream);
     });
   })
-  .catch(err=>{
-    alert("Allow camera & microphone");
+  .catch(()=>{
+    alert("Camera or microphone blocked");
   });
 }
 
+/* === WATCH STREAM === */
 function watchStream(){
   const id = document.getElementById('streamId').value;
-  const call = peer.call(id, null);
+  if(!id){ alert("Enter Stream ID"); return; }
 
+  const call = peer.call(id, null);
   call.on('stream', stream=>{
     document.getElementById('video').srcObject = stream;
+    document.getElementById('status').innerText = "Watching live stream";
   });
+}
+
+/* === CONTROLS === */
+function toggleMic(){
+  if(!localStream) return;
+  micOn = !micOn;
+  localStream.getAudioTracks()[0].enabled = micOn;
+}
+
+function toggleCam(){
+  if(!localStream) return;
+  camOn = !camOn;
+  localStream.getVideoTracks()[0].enabled = camOn;
 }
 </script>
 
