@@ -2,10 +2,9 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>HB Live Stream Fixed</title>
+<title>HB Live Stream Final</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
@@ -24,7 +23,7 @@ button{background:#22c55e;font-weight:bold;cursor:pointer}
 <body>
 
 <header>
-<h2>📡 HB Live Stream Fixed</h2>
+<h2>📡 HB Live Stream Final</h2>
 </header>
 
 <div class="container">
@@ -52,7 +51,7 @@ button{background:#22c55e;font-weight:bold;cursor:pointer}
 </div>
 
 <script>
-/* ================= FIREBASE CONFIG ================= */
+/* FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBV3Gq6_Xe_i6C1uX8LKKjk-sNy2K13bII",
   authDomain: "hb-live-chart.firebaseapp.com",
@@ -64,110 +63,102 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-/* ================= WEBRTC ================= */
+/* WEBRTC SETUP WITH TURN */
 const pc = new RTCPeerConnection({
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
+    { urls: 'turn:openrelay.metered.ca:80', username:'openrelayproject', credential:'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' }
   ]
 });
 
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
+let roomRef;  // Keep room reference globally
 
-/* Show remote stream */
 pc.ontrack = e => {
   video.srcObject = e.streams[0];
 };
 
-/* ================= BROADCAST ================= */
+/* BROADCAST */
 async function startBroadcast(){
   statusEl.innerText = "Requesting camera…";
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video:true,
-    audio:true
-  });
-
-  stream.getTracks().forEach(track=>{
-    pc.addTrack(track, stream);
-  });
-
+  const stream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+  stream.getTracks().forEach(track => pc.addTrack(track, stream));
   video.srcObject = stream;
 
-  // Create a new room document
-  const roomRef = db.collection("rooms").doc();
+  // 1️⃣ Create a new Firestore document with known ID
+  roomRef = db.collection("rooms").doc();
   const roomId = roomRef.id;
   document.getElementById("roomId").value = roomId;
-  statusEl.innerText = "LIVE 🔴 Room created: " + roomId;
 
-  // Create offer and write to Firestore
+  // 2️⃣ Create offer
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
+  // 3️⃣ Write offer to Firestore
   await roomRef.set({ offer: offer.toJSON() });
+  statusEl.innerText = "LIVE 🔴 Room created: " + roomId;
 
-  // Send ICE candidates
+  // 4️⃣ Send ICE candidates
   pc.onicecandidate = e=>{
     if(e.candidate){
       roomRef.collection("candidates").add(e.candidate.toJSON());
     }
   };
 
-  // Listen for answers from viewers
+  // 5️⃣ Listen for answers from viewers
   roomRef.collection("answers").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
-      if(change.type === "added"){
+      if(change.type==="added"){
         pc.setRemoteDescription(new RTCSessionDescription(change.doc.data()));
       }
     });
   });
 }
 
-/* ================= VIEWER ================= */
+/* VIEWER */
 async function joinStream(){
-  const id = document.getElementById("joinId").value;
+  const id = document.getElementById("joinId").value.trim();
   if(!id){ alert("Enter Room ID"); return; }
 
-  const roomRef = db.collection("rooms").doc(id);
-  const roomSnap = await roomRef.get();
+  const roomDoc = db.collection("rooms").doc(id);
+  
+  // Retry mechanism in case Firestore hasn't updated yet
+  let retries = 0;
+  let roomSnap;
+  while(retries < 5){
+    roomSnap = await roomDoc.get();
+    if(roomSnap.exists) break;
+    retries++;
+    await new Promise(r => setTimeout(r, 1000));
+  }
 
   if(!roomSnap.exists){
-    alert("Room not found");
+    alert("Room not found. Make sure broadcaster started first.");
     return;
   }
 
   statusEl.innerText = "Connecting…";
 
-  // Viewer sends empty stream (audio/video off)
   const stream = await navigator.mediaDevices.getUserMedia({video:false,audio:false});
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
   pc.onicecandidate = e=>{
     if(e.candidate){
-      roomRef.collection("answers").add(e.candidate.toJSON());
+      roomDoc.collection("answers").add(e.candidate.toJSON());
     }
   };
 
   const offer = roomSnap.data().offer;
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
   // Listen for broadcaster ICE candidates
-  roomRef.collection("candidates").onSnapshot(snapshot=>{
+  roomDoc.collection("candidates").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
-      if(change.type === "added"){
+      if(change.type==="added"){
         pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
       }
     });
