@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>HB Live Stream Final</title>
+<title>HB Live Stream Fixed Room</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -23,7 +23,7 @@ button{background:#22c55e;font-weight:bold;cursor:pointer}
 <body>
 
 <header>
-<h2>📡 HB Live Stream Final</h2>
+<h2>📡 HB Live Stream Fixed Room</h2>
 </header>
 
 <div class="container">
@@ -35,12 +35,12 @@ button{background:#22c55e;font-weight:bold;cursor:pointer}
 <div class="card">
 <h3>🎥 Broadcaster</h3>
 <button onclick="startBroadcast()">Start Live</button>
-<input id="roomId" placeholder="Room ID" readonly>
+<input id="roomId" placeholder="Room ID" readonly value="20262026">
 </div>
 
 <div class="card">
 <h3>👀 Viewer</h3>
-<input id="joinId" placeholder="Enter Room ID">
+<input id="joinId" placeholder="Enter Room ID" value="20262026">
 <button onclick="joinStream()">Watch Live</button>
 </div>
 
@@ -74,8 +74,8 @@ const pc = new RTCPeerConnection({
 
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
-let roomRef;  // Keep room reference globally
 
+let roomRef;
 pc.ontrack = e => {
   video.srcObject = e.streams[0];
 };
@@ -87,27 +87,26 @@ async function startBroadcast(){
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
   video.srcObject = stream;
 
-  // 1️⃣ Create a new Firestore document with known ID
-  roomRef = db.collection("rooms").doc();
-  const roomId = roomRef.id;
-  document.getElementById("roomId").value = roomId;
+  // Fixed Room ID
+  const roomId = "20262026";
+  roomRef = db.collection("rooms").doc(roomId);
 
-  // 2️⃣ Create offer
+  // Create offer
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // 3️⃣ Write offer to Firestore
+  // Write offer to Firestore
   await roomRef.set({ offer: offer.toJSON() });
   statusEl.innerText = "LIVE 🔴 Room created: " + roomId;
 
-  // 4️⃣ Send ICE candidates
+  // Send ICE candidates
   pc.onicecandidate = e=>{
     if(e.candidate){
       roomRef.collection("candidates").add(e.candidate.toJSON());
     }
   };
 
-  // 5️⃣ Listen for answers from viewers
+  // Listen for viewer answers
   roomRef.collection("answers").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
       if(change.type==="added"){
@@ -119,12 +118,10 @@ async function startBroadcast(){
 
 /* VIEWER */
 async function joinStream(){
-  const id = document.getElementById("joinId").value.trim();
-  if(!id){ alert("Enter Room ID"); return; }
+  const roomId = "20262026";
+  const roomDoc = db.collection("rooms").doc(roomId);
 
-  const roomDoc = db.collection("rooms").doc(id);
-  
-  // Retry mechanism in case Firestore hasn't updated yet
+  // Retry in case broadcaster hasn't created it yet
   let retries = 0;
   let roomSnap;
   while(retries < 5){
@@ -135,7 +132,7 @@ async function joinStream(){
   }
 
   if(!roomSnap.exists){
-    alert("Room not found. Make sure broadcaster started first.");
+    alert("Room not found. Broadcaster must start first.");
     return;
   }
 
@@ -152,10 +149,10 @@ async function joinStream(){
 
   const offer = roomSnap.data().offer;
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
-  // Listen for broadcaster ICE candidates
   roomDoc.collection("candidates").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
       if(change.type==="added"){
