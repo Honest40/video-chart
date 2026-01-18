@@ -2,29 +2,29 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>HB Live Stream</title>
+<title>HB Live Stream Stable</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Firebase COMPAT (IMPORTANT) -->
+<!-- Firebase COMPAT (Browser-friendly) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <style>
 body{margin:0;font-family:Arial;background:#020617;color:white}
-header{background:black;padding:15px;text-align:center}
+header{text-align:center;padding:15px;background:black}
 .container{max-width:900px;margin:auto;padding:20px}
 .card{background:#0f172a;padding:15px;border-radius:12px;margin-bottom:15px}
 video{width:100%;background:black;border-radius:12px}
 button,input{width:100%;padding:12px;margin-top:8px;border-radius:8px;border:none}
-button{background:#22c55e;font-weight:bold}
-.status{font-size:14px;opacity:.8}
+button{background:#22c55e;font-weight:bold;cursor:pointer}
+.status{font-size:14px;opacity:.8;margin-top:5px}
 </style>
 </head>
 
 <body>
 
 <header>
-<h2>📡 HB Live Streaming (WORKING)</h2>
+<h2>📡 HB Live Stream (Stable)</h2>
 </header>
 
 <div class="container">
@@ -52,7 +52,7 @@ button{background:#22c55e;font-weight:bold}
 </div>
 
 <script>
-/* ================= FIREBASE ================= */
+/* ================= FIREBASE CONFIG ================= */
 const firebaseConfig = {
   apiKey: "AIzaSyBV3Gq6_Xe_i6C1uX8LKKjk-sNy2K13bII",
   authDomain: "hb-live-chart.firebaseapp.com",
@@ -61,13 +61,25 @@ const firebaseConfig = {
   messagingSenderId: "523823843592",
   appId: "1:523823843592:web:73b868e427306781ed04bd"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* ================= WEBRTC ================= */
+/* STUN + TURN for reliable NAT traversal */
 const pc = new RTCPeerConnection({
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ]
 });
 
 const video = document.getElementById("video");
@@ -92,10 +104,12 @@ async function startBroadcast(){
 
   video.srcObject = stream;
 
+  // Create a new Firestore room
   const roomRef = await db.collection("rooms").add({});
   document.getElementById("roomId").value = roomRef.id;
   statusEl.innerText = "LIVE 🔴 Room created";
 
+  // Create offer
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
@@ -107,6 +121,7 @@ async function startBroadcast(){
     }
   };
 
+  // Listen for viewer answers
   roomRef.collection("answers").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
       if(change.type === "added"){
@@ -118,7 +133,7 @@ async function startBroadcast(){
   });
 }
 
-/* ================= VIEW ================= */
+/* ================= VIEWER ================= */
 async function joinStream(){
   const id = document.getElementById("joinId").value;
   if(!id){ alert("Enter Room ID"); return; }
@@ -133,6 +148,13 @@ async function joinStream(){
 
   statusEl.innerText = "Connecting…";
 
+  // Viewer sends empty stream (microphone off)
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:false,
+    audio:false
+  });
+  stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
   pc.onicecandidate = e=>{
     if(e.candidate){
       roomRef.collection("answers").add(e.candidate.toJSON());
@@ -145,6 +167,7 @@ async function joinStream(){
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
+  // Listen for broadcaster ICE candidates
   roomRef.collection("candidates").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
       if(change.type === "added"){
