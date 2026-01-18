@@ -1,187 +1,161 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>StreamX Live Ultimate</title>
+<title>HB Live Stream</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<!-- Firebase COMPAT (IMPORTANT) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <style>
-body{
-  margin:0;
-  font-family:Arial;
-  background:#020617;
-  color:white;
-}
-header{
-  background:black;
-  padding:15px;
-  text-align:center;
-}
-.container{
-  max-width:900px;
-  margin:auto;
-  padding:20px;
-}
-.card{
-  background:#0f172a;
-  padding:20px;
-  border-radius:12px;
-  margin-bottom:20px;
-}
-video{
-  width:100%;
-  background:black;
-  border-radius:12px;
-}
-input,button{
-  width:100%;
-  padding:12px;
-  margin-top:8px;
-  border-radius:8px;
-  border:none;
-}
-button{
-  background:#22c55e;
-  font-weight:bold;
-}
-.status{
-  font-size:14px;
-  margin-top:5px;
-}
-.controls{
-  display:flex;
-  gap:10px;
-}
-.controls button{
-  flex:1;
-}
-.chat{
-  height:150px;
-  overflow:auto;
-  background:#020617;
-  padding:10px;
-  border-radius:8px;
-  font-size:14px;
-}
+body{margin:0;font-family:Arial;background:#020617;color:white}
+header{background:black;padding:15px;text-align:center}
+.container{max-width:900px;margin:auto;padding:20px}
+.card{background:#0f172a;padding:15px;border-radius:12px;margin-bottom:15px}
+video{width:100%;background:black;border-radius:12px}
+button,input{width:100%;padding:12px;margin-top:8px;border-radius:8px;border:none}
+button{background:#22c55e;font-weight:bold}
+.status{font-size:14px;opacity:.8}
 </style>
 </head>
 
 <body>
 
 <header>
-  <h2>📡 StreamX Live Ultimate</h2>
+<h2>📡 HB Live Streaming (WORKING)</h2>
 </header>
 
 <div class="container">
 
-  <div class="card">
-    <strong>Status:</strong>
-    <div id="status" class="status">Connecting…</div>
-  </div>
+<div class="card">
+<b>Status:</b> <span id="status">Idle</span>
+</div>
 
-  <div class="card">
-    <h3>🎥 Broadcaster</h3>
-    <button onclick="startStream()">Start Live Stream</button>
-    <input id="myId" readonly placeholder="Your Stream ID">
+<div class="card">
+<h3>🎥 Broadcaster</h3>
+<button onclick="startBroadcast()">Start Live</button>
+<input id="roomId" placeholder="Room ID" readonly>
+</div>
 
-    <div class="controls">
-      <button onclick="toggleMic()">Mute Mic</button>
-      <button onclick="toggleCam()">Camera Off</button>
-    </div>
-  </div>
+<div class="card">
+<h3>👀 Viewer</h3>
+<input id="joinId" placeholder="Enter Room ID">
+<button onclick="joinStream()">Watch Live</button>
+</div>
 
-  <div class="card">
-    <h3>👀 Viewer</h3>
-    <input id="streamId" placeholder="Enter Stream ID">
-    <button onclick="watchStream()">Watch Live</button>
-  </div>
-
-  <div class="card">
-    <h3>🔴 Live Video</h3>
-    <video id="video" autoplay playsinline controls></video>
-  </div>
-
-  <div class="card">
-    <h3>💬 Live Chat (Demo)</h3>
-    <div id="chat" class="chat"></div>
-    <input id="msg" placeholder="Type message">
-    <button onclick="sendMsg()">Send</button>
-  </div>
+<div class="card">
+<video id="video" autoplay playsinline controls></video>
+</div>
 
 </div>
 
 <script>
-let localStream;
-let micOn = true;
-let camOn = true;
+/* ================= FIREBASE ================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBV3Gq6_Xe_i6C1uX8LKKjk-sNy2K13bII",
+  authDomain: "hb-live-chart.firebaseapp.com",
+  projectId: "hb-live-chart",
+  storageBucket: "hb-live-chart.firebasestorage.app",
+  messagingSenderId: "523823843592",
+  appId: "1:523823843592:web:73b868e427306781ed04bd"
+};
 
-const peer = new Peer(undefined,{
-  host:'0.peerjs.com',
-  port:443,
-  secure:true
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* ================= WEBRTC ================= */
+const pc = new RTCPeerConnection({
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
 });
 
-peer.on('open', id=>{
-  document.getElementById('myId').value = id;
-  document.getElementById('status').innerText = "Connected ✔ ID Ready";
-});
+const video = document.getElementById("video");
+const statusEl = document.getElementById("status");
 
-peer.on('error', err=>{
-  document.getElementById('status').innerText = "Error: " + err.type;
-});
+pc.ontrack = e => {
+  video.srcObject = e.streams[0];
+};
 
-/* BROADCAST */
-function startStream(){
-  navigator.mediaDevices.getUserMedia({video:true,audio:true})
-  .then(stream=>{
-    localStream = stream;
-    document.getElementById('video').srcObject = stream;
-    document.getElementById('status').innerText = "LIVE 🔴 Broadcasting";
+/* ================= BROADCAST ================= */
+async function startBroadcast(){
+  statusEl.innerText = "Requesting camera…";
 
-    peer.on('call', call=>{
-      call.answer(stream);
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:true,
+    audio:true
+  });
+
+  stream.getTracks().forEach(track=>{
+    pc.addTrack(track, stream);
+  });
+
+  video.srcObject = stream;
+
+  const roomRef = await db.collection("rooms").add({});
+  document.getElementById("roomId").value = roomRef.id;
+  statusEl.innerText = "LIVE 🔴 Room created";
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  await roomRef.set({ offer });
+
+  pc.onicecandidate = e=>{
+    if(e.candidate){
+      roomRef.collection("candidates").add(e.candidate.toJSON());
+    }
+  };
+
+  roomRef.collection("answers").onSnapshot(snapshot=>{
+    snapshot.docChanges().forEach(change=>{
+      if(change.type === "added"){
+        pc.setRemoteDescription(
+          new RTCSessionDescription(change.doc.data())
+        );
+      }
     });
   });
 }
 
-/* WATCH (FIXED) */
-function watchStream(){
-  const id = document.getElementById('streamId').value;
-  if(!id){ alert("Enter Stream ID"); return; }
+/* ================= VIEW ================= */
+async function joinStream(){
+  const id = document.getElementById("joinId").value;
+  if(!id){ alert("Enter Room ID"); return; }
 
-  navigator.mediaDevices.getUserMedia({video:false,audio:false})
-  .then(stream=>{
-    const call = peer.call(id, stream);
+  const roomRef = db.collection("rooms").doc(id);
+  const roomSnap = await roomRef.get();
 
-    call.on('stream', remoteStream=>{
-      document.getElementById('video').srcObject = remoteStream;
-      document.getElementById('status').innerText = "Watching Live";
+  if(!roomSnap.exists){
+    alert("Room not found");
+    return;
+  }
+
+  statusEl.innerText = "Connecting…";
+
+  pc.onicecandidate = e=>{
+    if(e.candidate){
+      roomRef.collection("answers").add(e.candidate.toJSON());
+    }
+  };
+
+  const offer = roomSnap.data().offer;
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  roomRef.collection("candidates").onSnapshot(snapshot=>{
+    snapshot.docChanges().forEach(change=>{
+      if(change.type === "added"){
+        pc.addIceCandidate(
+          new RTCIceCandidate(change.doc.data())
+        );
+      }
     });
   });
-}
 
-/* CONTROLS */
-function toggleMic(){
-  if(!localStream) return;
-  micOn = !micOn;
-  localStream.getAudioTracks()[0].enabled = micOn;
-}
-
-function toggleCam(){
-  if(!localStream) return;
-  camOn = !camOn;
-  localStream.getVideoTracks()[0].enabled = camOn;
-}
-
-/* CHAT DEMO */
-function sendMsg(){
-  const msg = document.getElementById('msg').value;
-  if(!msg) return;
-  const chat = document.getElementById('chat');
-  chat.innerHTML += "<div>💬 " + msg + "</div>";
-  document.getElementById('msg').value="";
+  statusEl.innerText = "Watching Live ✔";
 }
 </script>
 
