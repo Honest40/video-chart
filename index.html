@@ -60,6 +60,7 @@ const statusEl = document.getElementById("status");
 const ROOM_ID = "20262026";
 let roomRef;
 
+/* When a remote track arrives, set it on the video element */
 pc.ontrack = e => {
   video.srcObject = e.streams[0];
 };
@@ -85,19 +86,19 @@ async function initStream() {
 
     statusEl.innerText = "LIVE 🔴 Broadcasting…";
 
-    // ICE candidates
-    pc.onicecandidate = e=>{
-      if(e.candidate) roomRef.collection("candidates").add(e.candidate.toJSON());
-    };
-
-    // Listen for viewers’ answers
-    roomRef.collection("answers").onSnapshot(snapshot=>{
-      snapshot.docChanges().forEach(change=>{
-        if(change.type==="added"){
-          pc.setRemoteDescription(new RTCSessionDescription(change.doc.data()));
+    // Listen for viewers’ ICE candidates
+    roomRef.collection("answers").onSnapshot(snapshot => {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === "added") {
+          pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
         }
       });
     });
+
+    // Send ICE candidates to Firestore
+    pc.onicecandidate = e => {
+      if (e.candidate) roomRef.collection("candidates").add(e.candidate.toJSON());
+    };
 
   } else {
     // This device becomes VIEWER
@@ -109,15 +110,15 @@ async function initStream() {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
-    // Send ICE candidates
-    pc.onicecandidate = e=>{
-      if(e.candidate) roomRef.collection("answers").add(e.candidate.toJSON());
+    // Send ICE candidates to Firestore
+    pc.onicecandidate = e => {
+      if (e.candidate) roomRef.collection("answers").add(e.candidate.toJSON());
     };
 
     // Listen for broadcaster ICE candidates
-    roomRef.collection("candidates").onSnapshot(snapshot=>{
-      snapshot.docChanges().forEach(change=>{
-        if(change.type==="added"){
+    roomRef.collection("candidates").onSnapshot(snapshot => {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === "added") {
           pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
         }
       });
@@ -127,9 +128,9 @@ async function initStream() {
   }
 }
 
-/* AUTO START */
+/* AUTO START ON PAGE LOAD */
 window.addEventListener("load", () => {
-  initStream().catch(err=>{
+  initStream().catch(err => {
     console.error(err);
     statusEl.innerText = "Error: " + err.message;
   });
