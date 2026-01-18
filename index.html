@@ -1,100 +1,161 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Free Video Call App</title>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>StreamX Live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Agora Web SDK -->
-  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
-  <style>
-    body { background:#0f172a; color:#fff; text-align:center; font-family:Arial; padding:10px; }
-    video { width:45%; border-radius:12px; margin:5px; background:black; }
-    input, button { padding:10px; margin:5px; font-size:16px; border-radius:6px; border:none; }
-    .controls button { cursor:pointer; }
-    .status { margin:10px; color:#38bdf8; }
-  </style>
+<style>
+:root{
+  --bg:#020617;
+  --card:#0f172a;
+  --accent:#22c55e;
+  --text:#e5e7eb;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,Arial;
+  background:var(--bg);
+  color:var(--text);
+}
+header{
+  background:#020617;
+  padding:15px;
+  text-align:center;
+  border-bottom:1px solid #1e293b;
+}
+header h1{
+  margin:0;
+  color:var(--accent);
+}
+.container{
+  max-width:900px;
+  margin:auto;
+  padding:20px;
+}
+.card{
+  background:var(--card);
+  padding:20px;
+  border-radius:15px;
+  margin-bottom:20px;
+}
+.card h2{
+  margin-top:0;
+}
+video{
+  width:100%;
+  background:black;
+  border-radius:15px;
+  margin-top:10px;
+}
+input,button{
+  width:100%;
+  padding:12px;
+  margin-top:10px;
+  border-radius:10px;
+  border:none;
+  font-size:16px;
+}
+input{
+  background:#020617;
+  color:white;
+  border:1px solid #1e293b;
+}
+button{
+  background:var(--accent);
+  color:black;
+  font-weight:bold;
+  cursor:pointer;
+}
+button:hover{
+  opacity:.9;
+}
+footer{
+  text-align:center;
+  font-size:14px;
+  opacity:.7;
+  margin-top:30px;
+}
+.badge{
+  display:inline-block;
+  padding:5px 10px;
+  background:#16a34a;
+  border-radius:20px;
+  font-size:12px;
+}
+</style>
 </head>
+
 <body>
 
-<h2>📞 Free Agora Video Call</h2>
+<header>
+  <h1>📡 StreamX Live</h1>
+  <div class="badge">FREE LIVE STREAMING</div>
+</header>
 
-<input id="username" placeholder="Enter your username">
-<input id="channel" placeholder="Enter channel name">
-<button id="joinBtn">Join Call</button>
-<button id="leaveBtn">Leave Call</button>
+<div class="container">
 
-<p class="status" id="status">Status: Idle</p>
+  <!-- BROADCASTER -->
+  <div class="card">
+    <h2>🎥 Go Live</h2>
+    <button onclick="startStream()">Start Live Stream</button>
+    <input id="myId" placeholder="Your Stream ID will appear here" readonly>
+  </div>
 
-<div>
-  <video id="localVideo" autoplay muted></video>
-  <video id="remoteVideo" autoplay></video>
+  <!-- VIEWER -->
+  <div class="card">
+    <h2>👀 Watch Live</h2>
+    <input id="streamId" placeholder="Enter Stream ID">
+    <button onclick="watchStream()">Watch Live</button>
+  </div>
+
+  <!-- VIDEO -->
+  <div class="card">
+    <h2>🔴 Live Video</h2>
+    <video id="video" autoplay playsinline controls></video>
+  </div>
+
 </div>
 
+<footer>
+  StreamX © 2026 · Built with WebRTC
+</footer>
+
 <script>
-  // ======= CONFIG =======
-  const APP_ID = "YOUR_AGORA_APP_ID"; // Replace with your Agora App ID
-  let client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-  let localTracks = {};
-  let remoteUsers = {};
+let peer = new Peer();
+let localStream;
 
-  const localVideo = document.getElementById("localVideo");
-  const remoteVideo = document.getElementById("remoteVideo");
-  const statusEl = document.getElementById("status");
+peer.on('open', id => {
+  document.getElementById('myId').value = id;
+});
 
-  // ===== JOIN CALL =====
-  document.getElementById("joinBtn").onclick = async () => {
-    const username = document.getElementById("username").value.trim();
-    const channel = document.getElementById("channel").value.trim();
-    if(!username || !channel) return alert("Enter username and channel");
+function startStream(){
+  navigator.mediaDevices.getUserMedia({video:true,audio:true})
+  .then(stream=>{
+    localStream = stream;
+    document.getElementById('video').srcObject = stream;
 
-    statusEl.innerText = "Joining channel...";
-
-    // Join channel
-    const uid = await client.join(APP_ID, channel, null, username);
-
-    // Create local audio & video tracks
-    const [microphoneTrack, cameraTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-    localTracks.audio = microphoneTrack;
-    localTracks.video = cameraTrack;
-
-    // Play local video
-    cameraTrack.play(localVideo);
-
-    // Publish local tracks
-    await client.publish(Object.values(localTracks));
-    statusEl.innerText = "Joined channel: " + channel;
-
-    // Subscribe to remote users
-    client.on("user-published", async (user, mediaType) => {
-      await client.subscribe(user, mediaType);
-      if (mediaType === "video") {
-        user.videoTrack.play(remoteVideo);
-      }
-      if (mediaType === "audio") {
-        user.audioTrack.play();
-      }
-      remoteUsers[user.uid] = user;
+    peer.on('call', call=>{
+      call.answer(stream);
     });
+  })
+  .catch(()=>{
+    alert("Camera or microphone permission denied");
+  });
+}
 
-    client.on("user-unpublished", user => {
-      if(remoteUsers[user.uid]) delete remoteUsers[user.uid];
-      remoteVideo.srcObject = null;
-    });
-  };
+function watchStream(){
+  let id = document.getElementById('streamId').value;
+  if(!id){ alert("Enter Stream ID"); return; }
 
-  // ===== LEAVE CALL =====
-  document.getElementById("leaveBtn").onclick = async () => {
-    for (let track of Object.values(localTracks)) {
-      track.stop();
-      track.close();
-    }
-    await client.leave();
-    localVideo.srcObject = null;
-    remoteVideo.srcObject = null;
-    statusEl.innerText = "Left call";
-  };
+  let call = peer.call(id, null);
+  call.on('stream', stream=>{
+    document.getElementById('video').srcObject = stream;
+  });
+}
 </script>
 
 </body>
