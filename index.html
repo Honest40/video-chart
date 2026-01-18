@@ -2,10 +2,10 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>HB Live Stream Stable</title>
+<title>HB Live Stream Fixed</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Firebase COMPAT (Browser-friendly) -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
@@ -24,7 +24,7 @@ button{background:#22c55e;font-weight:bold;cursor:pointer}
 <body>
 
 <header>
-<h2>📡 HB Live Stream (Stable)</h2>
+<h2>📡 HB Live Stream Fixed</h2>
 </header>
 
 <div class="container">
@@ -65,7 +65,6 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* ================= WEBRTC ================= */
-/* STUN + TURN for reliable NAT traversal */
 const pc = new RTCPeerConnection({
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -85,6 +84,7 @@ const pc = new RTCPeerConnection({
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
 
+/* Show remote stream */
 pc.ontrack = e => {
   video.srcObject = e.streams[0];
 };
@@ -104,30 +104,30 @@ async function startBroadcast(){
 
   video.srcObject = stream;
 
-  // Create a new Firestore room
-  const roomRef = await db.collection("rooms").add({});
-  document.getElementById("roomId").value = roomRef.id;
-  statusEl.innerText = "LIVE 🔴 Room created";
+  // Create a new room document
+  const roomRef = db.collection("rooms").doc();
+  const roomId = roomRef.id;
+  document.getElementById("roomId").value = roomId;
+  statusEl.innerText = "LIVE 🔴 Room created: " + roomId;
 
-  // Create offer
+  // Create offer and write to Firestore
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  await roomRef.set({ offer });
+  await roomRef.set({ offer: offer.toJSON() });
 
+  // Send ICE candidates
   pc.onicecandidate = e=>{
     if(e.candidate){
       roomRef.collection("candidates").add(e.candidate.toJSON());
     }
   };
 
-  // Listen for viewer answers
+  // Listen for answers from viewers
   roomRef.collection("answers").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
       if(change.type === "added"){
-        pc.setRemoteDescription(
-          new RTCSessionDescription(change.doc.data())
-        );
+        pc.setRemoteDescription(new RTCSessionDescription(change.doc.data()));
       }
     });
   });
@@ -148,11 +148,8 @@ async function joinStream(){
 
   statusEl.innerText = "Connecting…";
 
-  // Viewer sends empty stream (microphone off)
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video:false,
-    audio:false
-  });
+  // Viewer sends empty stream (audio/video off)
+  const stream = await navigator.mediaDevices.getUserMedia({video:false,audio:false});
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
   pc.onicecandidate = e=>{
@@ -171,9 +168,7 @@ async function joinStream(){
   roomRef.collection("candidates").onSnapshot(snapshot=>{
     snapshot.docChanges().forEach(change=>{
       if(change.type === "added"){
-        pc.addIceCandidate(
-          new RTCIceCandidate(change.doc.data())
-        );
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
       }
     });
   });
