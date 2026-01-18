@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>HB Live Stream Auto Fixed</title>
+<title>HB Live Stream Auto Final</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -21,7 +21,7 @@ video{width:100%;background:black;border-radius:12px}
 <body>
 
 <header>
-<h2>📡 HB Live Stream Auto Fixed</h2>
+<h2>📡 HB Live Stream Auto Final</h2>
 </header>
 
 <div class="container">
@@ -100,18 +100,18 @@ async function initStream() {
     // VIEWER
     statusEl.innerText = "Starting as Viewer…";
 
-    const stream = await navigator.mediaDevices.getUserMedia({video:false,audio:false});
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-    pc.onicecandidate = e=>{
-      if(e.candidate) roomRef.collection("answers").add(e.candidate.toJSON());
-    };
+    // Viewer does NOT need getUserMedia at all
+    // They just receive the stream
 
     const offer = roomSnap.data().offer;
     await pc.setRemoteDescription(offer);
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
+
+    pc.onicecandidate = e=>{
+      if(e.candidate) roomRef.collection("answers").add(e.candidate.toJSON());
+    };
 
     roomRef.collection("candidates").onSnapshot(snapshot=>{
       snapshot.docChanges().forEach(change=>{
