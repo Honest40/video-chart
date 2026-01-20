@@ -3,20 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Advanced Multi-User Video Call</title>
+<title>Free Multi-User Meet Clone</title>
 <style>
-body { font-family: Arial; text-align: center; background: #f0f0f0; margin:0; padding:0; }
+body { font-family: Arial; background: #f0f0f0; margin:0; padding:0; text-align:center; }
 #controls { margin: 20px; }
-#videos { display: flex; flex-wrap: wrap; justify-content: center; }
+#videos { display: flex; flex-wrap: wrap; justify-content: center; margin-top:10px; }
 .video-container { position: relative; margin: 10px; display: flex; flex-direction: column; align-items: center; }
 video { width: 300px; border-radius: 8px; border: 2px solid #333; }
 label { margin-top: 5px; font-weight: bold; }
-button, input { padding: 8px 12px; margin: 5px; font-size: 16px; }
+input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
 #buttons { margin-top: 10px; }
+#participants { margin-top: 10px; text-align:left; display:inline-block; max-width:300px; }
+#chat { border:1px solid #ccc; padding:10px; width:300px; height:200px; overflow-y:auto; margin:10px auto; background:#fff; text-align:left;}
+#chat-input { width:200px; }
 </style>
 </head>
 <body>
-<h2>Advanced Multi-User Video Call</h2>
+<h2>Free Multi-User Meet Clone</h2>
 
 <div id="controls">
   <input type="text" id="name-input" placeholder="Your name">
@@ -29,9 +32,16 @@ button, input { padding: 8px 12px; margin: 5px; font-size: 16px; }
   <button id="leave-btn">Leave Room</button>
 </div>
 
+<div id="participants"><h3>Online:</h3><ul id="participants-list"></ul></div>
+
 <div id="videos"></div>
 
-<!-- PeerJS CDN -->
+<div id="chat">
+  <div id="messages"></div>
+</div>
+<input type="text" id="chat-input" placeholder="Type message">
+<button id="send-btn">Send</button>
+
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script>
 const joinBtn = document.getElementById('join-btn');
@@ -41,115 +51,171 @@ const videosDiv = document.getElementById('videos');
 const muteBtn = document.getElementById('mute-btn');
 const leaveBtn = document.getElementById('leave-btn');
 const buttonsDiv = document.getElementById('buttons');
+const participantsList = document.getElementById('participants-list');
+const chatInput = document.getElementById('chat-input');
+const sendBtn = document.getElementById('send-btn');
+const messagesDiv = document.getElementById('messages');
 
-let myStream;
-let myPeer;
-let myPeerId;
-let myName;
+let myStream, myPeer, myPeerId, myName;
 let peers = {};
 let muted = false;
+let participants = {};
 
-// Create video element with label
-function createVideo(id, name, stream) {
+// Helper: create video
+function createVideo(id, name, stream){
   const container = document.createElement('div');
-  container.className = 'video-container';
-  container.id = 'container-' + id;
-
+  container.className='video-container';
+  container.id='container-'+id;
   const video = document.createElement('video');
-  video.autoplay = true;
-  video.playsInline = true;
+  video.autoplay=true;
+  video.playsInline=true;
   video.srcObject = stream;
-  if(id === myPeerId) video.muted = true;
-
+  if(id===myPeerId) video.muted=true;
   const label = document.createElement('label');
-  label.innerText = name;
-
+  label.innerText=name;
   container.appendChild(video);
   container.appendChild(label);
   videosDiv.appendChild(container);
 }
 
 // Remove video
-function removeVideo(id) {
-  const container = document.getElementById('container-' + id);
+function removeVideo(id){
+  const container=document.getElementById('container-'+id);
   if(container) container.remove();
 }
 
+// Add participant
+function addParticipant(id, name){
+  if(participants[id]) return;
+  participants[id]=name;
+  const li=document.createElement('li');
+  li.id='p-'+id;
+  li.innerText=name;
+  participantsList.appendChild(li);
+}
+
+// Remove participant
+function removeParticipant(id){
+  delete participants[id];
+  const li=document.getElementById('p-'+id);
+  if(li) li.remove();
+}
+
+// Chat message
+function addMessage(sender, text){
+  const msg=document.createElement('div');
+  msg.innerHTML='<b>'+sender+':</b> '+text;
+  messagesDiv.appendChild(msg);
+  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+}
+
 // Get camera/mic
-async function getMedia() {
-  try {
-    myStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 320, height: 240 },
-      audio: true
-    });
-  } catch(err) {
-    alert("Camera/mic error: " + err);
-  }
+async function getMedia(){
+  try{
+    myStream=await navigator.mediaDevices.getUserMedia({video:{width:320,height:240},audio:true});
+  }catch(err){ alert("Camera/mic error:"+err);}
 }
 
 // Initialize PeerJS
-function initPeer(room) {
-  myPeerId = room + '-' + Math.floor(Math.random()*1000);
-  myPeer = new Peer(myPeerId, { debug: 2 });
+function initPeer(room){
+  myPeerId=room+'-'+Math.floor(Math.random()*1000);
+  myPeer=new Peer(myPeerId,{debug:2});
 
-  myPeer.on('open', id => {
-    console.log("My Peer ID:", id);
-    createVideo(myPeerId, myName, myStream);
-    buttonsDiv.style.display = 'block';
+  myPeer.on('open', id=>{
+    myName=nameInput.value.trim();
+    addParticipant(myPeerId,myName);
+    createVideo(myPeerId,myName,myStream);
+    buttonsDiv.style.display='block';
     connectToRoom(room);
   });
 
-  myPeer.on('call', call => {
+  // Incoming call
+  myPeer.on('call', call=>{
     call.answer(myStream);
-    const remoteId = call.peer;
-    call.on('stream', stream => createVideo(remoteId, remoteId.split('-')[0], stream));
-    call.on('close', () => removeVideo(remoteId));
-    peers[remoteId] = call;
+    const remoteId=call.peer;
+    call.on('stream',stream=>{
+      createVideo(remoteId,remoteId.split('-')[0],stream);
+      addParticipant(remoteId,remoteId.split('-')[0]);
+    });
+    call.on('close',()=>{removeVideo(remoteId); removeParticipant(remoteId);});
+    peers[remoteId]=call;
+  });
+
+  // Data connection for chat
+  myPeer.on('connection', conn=>{
+    conn.on('data', data=>{
+      if(data.type==='chat') addMessage(data.name,data.text);
+      if(data.type==='participants') addParticipant(data.id,data.name);
+    });
   });
 }
 
-// Connect to room
-function connectToRoom(room) {
-  const checkPeers = setInterval(() => {
-    fetch('https://peerjs.com/peers')
-      .then(res => res.json())
-      .then(allPeers => {
-        allPeers.forEach(id => {
-          if(id.startsWith(room + '-') && !peers[id] && id !== myPeerId) {
-            const call = myPeer.call(id, myStream);
-            call.on('stream', stream => createVideo(id, id.split('-')[0], stream));
-            call.on('close', () => removeVideo(id));
-            peers[id] = call;
-          }
-        });
-      })
-      .catch(err => console.log(err));
-  }, 3000);
+// Connect to peers in room
+function connectToRoom(room){
+  const checkPeers=setInterval(()=>{
+    fetch('https://peerjs.com/peers').then(res=>res.json()).then(allPeers=>{
+      allPeers.forEach(id=>{
+        if(id.startsWith(room+'-') && !peers[id] && id!==myPeerId){
+          const call=myPeer.call(id,myStream);
+          call.on('stream',stream=>{
+            createVideo(id,id.split('-')[0],stream);
+            addParticipant(id,id.split('-')[0]);
+          });
+          call.on('close',()=>{removeVideo(id); removeParticipant(id);});
+          peers[id]=call;
+          const conn=myPeer.connect(id);
+          conn.on('open',()=>{
+            conn.send({type:'participants',id:myPeerId,name:myName});
+          });
+          // Save connection for chat
+          peers[id+'_conn']=conn;
+        }
+      });
+    }).catch(err=>console.log(err));
+  },3000);
 }
 
 // Join button
-joinBtn.addEventListener('click', async () => {
-  myName = nameInput.value.trim();
-  const room = roomInput.value.trim();
-  if(!myName || !room) return alert("Enter your name and room name");
+joinBtn.addEventListener('click',async()=>{
+  myName=nameInput.value.trim();
+  const room=roomInput.value.trim();
+  if(!myName||!room) return alert("Enter name and room");
   await getMedia();
   initPeer(room);
 });
 
 // Mute/unmute
-muteBtn.addEventListener('click', () => {
-  muted = !muted;
-  myStream.getAudioTracks()[0].enabled = !muted;
-  muteBtn.innerText = muted ? "Unmute" : "Mute";
+muteBtn.addEventListener('click',()=>{
+  muted=!muted;
+  myStream.getAudioTracks()[0].enabled=!muted;
+  muteBtn.innerText=muted?"Unmute":"Mute";
 });
 
 // Leave room
-leaveBtn.addEventListener('click', () => {
-  for(let id in peers) peers[id].close();
+leaveBtn.addEventListener('click',()=>{
+  for(let id in peers){
+    if(peers[id] && peers[id].close) peers[id].close();
+    if(peers[id+'_conn'] && peers[id+'_conn'].close) peers[id+'_conn'].close();
+  }
   myPeer.destroy();
-  videosDiv.innerHTML = '';
-  buttonsDiv.style.display = 'none';
+  videosDiv.innerHTML='';
+  participantsList.innerHTML='';
+  messagesDiv.innerHTML='';
+  buttonsDiv.style.display='none';
   alert("You left the room");
+});
+
+// Send chat
+sendBtn.addEventListener('click',()=>{
+  const text=chatInput.value.trim();
+  if(!text) return;
+  addMessage(myName,text);
+  for(let id in peers){
+    if(peers[id+'_conn'] && peers[id+'_conn'].open){
+      peers[id+'_conn'].send({type:'chat',name:myName,text:text});
+    }
+  }
+  chatInput.value='';
 });
 </script>
 </body>
