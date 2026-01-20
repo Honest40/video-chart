@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Free Multi-User Meet Clone</title>
+<title>Direct Multi-User Video Call</title>
 <style>
 body { font-family: Arial; background: #f0f0f0; margin:0; padding:0; text-align:center; }
 #controls { margin: 20px; }
@@ -19,17 +19,16 @@ input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
 </style>
 </head>
 <body>
-<h2>Free Multi-User Meet Clone</h2>
+<h2>Direct Multi-User Video Call</h2>
 
 <div id="controls">
   <input type="text" id="name-input" placeholder="Your name">
-  <input type="text" id="room-input" placeholder="Room name">
-  <button id="join-btn">Join Room</button>
+  <button id="join-btn">Join Call</button>
 </div>
 
 <div id="buttons" style="display:none;">
   <button id="mute-btn">Mute</button>
-  <button id="leave-btn">Leave Room</button>
+  <button id="leave-btn">Leave Call</button>
 </div>
 
 <div id="participants"><h3>Online:</h3><ul id="participants-list"></ul></div>
@@ -46,7 +45,6 @@ input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
 <script>
 const joinBtn = document.getElementById('join-btn');
 const nameInput = document.getElementById('name-input');
-const roomInput = document.getElementById('room-input');
 const videosDiv = document.getElementById('videos');
 const muteBtn = document.getElementById('mute-btn');
 const leaveBtn = document.getElementById('leave-btn');
@@ -61,7 +59,7 @@ let peers = {};
 let muted = false;
 let participants = {};
 
-// Helper: create video
+// Create video element
 function createVideo(id, name, stream){
   const container = document.createElement('div');
   container.className='video-container';
@@ -69,7 +67,7 @@ function createVideo(id, name, stream){
   const video = document.createElement('video');
   video.autoplay=true;
   video.playsInline=true;
-  video.srcObject = stream;
+  video.srcObject=stream;
   if(id===myPeerId) video.muted=true;
   const label = document.createElement('label');
   label.innerText=name;
@@ -84,7 +82,7 @@ function removeVideo(id){
   if(container) container.remove();
 }
 
-// Add participant
+// Participants
 function addParticipant(id, name){
   if(participants[id]) return;
   participants[id]=name;
@@ -94,14 +92,13 @@ function addParticipant(id, name){
   participantsList.appendChild(li);
 }
 
-// Remove participant
 function removeParticipant(id){
   delete participants[id];
   const li=document.getElementById('p-'+id);
   if(li) li.remove();
 }
 
-// Chat message
+// Chat
 function addMessage(sender, text){
   const msg=document.createElement('div');
   msg.innerHTML='<b>'+sender+':</b> '+text;
@@ -117,8 +114,8 @@ async function getMedia(){
 }
 
 // Initialize PeerJS
-function initPeer(room){
-  myPeerId=room+'-'+Math.floor(Math.random()*1000);
+function initPeer(){
+  myPeerId='user-'+Math.floor(Math.random()*10000);
   myPeer=new Peer(myPeerId,{debug:2});
 
   myPeer.on('open', id=>{
@@ -126,7 +123,7 @@ function initPeer(room){
     addParticipant(myPeerId,myName);
     createVideo(myPeerId,myName,myStream);
     buttonsDiv.style.display='block';
-    connectToRoom(room);
+    connectToPeers();
   });
 
   // Incoming call
@@ -134,14 +131,14 @@ function initPeer(room){
     call.answer(myStream);
     const remoteId=call.peer;
     call.on('stream',stream=>{
-      createVideo(remoteId,remoteId.split('-')[0],stream);
-      addParticipant(remoteId,remoteId.split('-')[0]);
+      createVideo(remoteId,remoteId,stream);
+      addParticipant(remoteId,remoteId);
     });
     call.on('close',()=>{removeVideo(remoteId); removeParticipant(remoteId);});
     peers[remoteId]=call;
   });
 
-  // Data connection for chat
+  // Data for chat
   myPeer.on('connection', conn=>{
     conn.on('data', data=>{
       if(data.type==='chat') addMessage(data.name,data.text);
@@ -150,24 +147,22 @@ function initPeer(room){
   });
 }
 
-// Connect to peers in room
-function connectToRoom(room){
+// Connect to all online peers (direct)
+function connectToPeers(){
   const checkPeers=setInterval(()=>{
     fetch('https://peerjs.com/peers').then(res=>res.json()).then(allPeers=>{
       allPeers.forEach(id=>{
-        if(id.startsWith(room+'-') && !peers[id] && id!==myPeerId){
+        if(!peers[id] && id!==myPeerId){
           const call=myPeer.call(id,myStream);
           call.on('stream',stream=>{
-            createVideo(id,id.split('-')[0],stream);
-            addParticipant(id,id.split('-')[0]);
+            createVideo(id,id,stream);
+            addParticipant(id,id);
           });
           call.on('close',()=>{removeVideo(id); removeParticipant(id);});
           peers[id]=call;
+
           const conn=myPeer.connect(id);
-          conn.on('open',()=>{
-            conn.send({type:'participants',id:myPeerId,name:myName});
-          });
-          // Save connection for chat
+          conn.on('open',()=>{ conn.send({type:'participants',id:myPeerId,name:myName}); });
           peers[id+'_conn']=conn;
         }
       });
@@ -175,13 +170,12 @@ function connectToRoom(room){
   },3000);
 }
 
-// Join button
+// Join
 joinBtn.addEventListener('click',async()=>{
   myName=nameInput.value.trim();
-  const room=roomInput.value.trim();
-  if(!myName||!room) return alert("Enter name and room");
+  if(!myName) return alert("Enter your name");
   await getMedia();
-  initPeer(room);
+  initPeer();
 });
 
 // Mute/unmute
@@ -191,7 +185,7 @@ muteBtn.addEventListener('click',()=>{
   muteBtn.innerText=muted?"Unmute":"Mute";
 });
 
-// Leave room
+// Leave call
 leaveBtn.addEventListener('click',()=>{
   for(let id in peers){
     if(peers[id] && peers[id].close) peers[id].close();
@@ -202,7 +196,7 @@ leaveBtn.addEventListener('click',()=>{
   participantsList.innerHTML='';
   messagesDiv.innerHTML='';
   buttonsDiv.style.display='none';
-  alert("You left the room");
+  alert("You left the call");
 });
 
 // Send chat
