@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Free Online Video Call</title>
+<title>Free Smooth Video Call</title>
 <style>
 body { font-family: Arial; text-align: center; background: #f0f0f0; }
 #videos { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 20px; }
@@ -12,12 +12,15 @@ input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
 </style>
 </head>
 <body>
-<h2>Free Online Video Call</h2>
+<h2>Free Smooth Video Call</h2>
 
-<input type="text" id="peer-id-input" placeholder="Enter Peer ID to call">
+<p>Enter a short custom ID (your name or room):</p>
+<input type="text" id="my-id-input" placeholder="Your ID (unique)">
+<button id="start-btn">Start</button>
+
+<p>Call someone by their ID:</p>
+<input type="text" id="peer-id-input" placeholder="Peer ID to call">
 <button id="call-btn">Call</button>
-<p>Your Peer ID will appear here:</p>
-<p id="my-id"></p>
 
 <div id="videos">
   <video id="my-video" autoplay muted></video>
@@ -29,42 +32,54 @@ input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
 <script>
 const myVideo = document.getElementById('my-video');
 const remoteVideo = document.getElementById('remote-video');
+const startBtn = document.getElementById('start-btn');
 const callBtn = document.getElementById('call-btn');
+const myIdInput = document.getElementById('my-id-input');
 const peerInput = document.getElementById('peer-id-input');
-const myIdDisplay = document.getElementById('my-id');
 
 let myStream;
+let peer;
 
-// 1️⃣ Get camera & mic
-navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-.then(stream => {
-  myStream = stream;
-  myVideo.srcObject = stream;
-})
-.catch(err => alert("Error accessing camera/mic: " + err));
+// Start with your custom ID
+startBtn.addEventListener('click', async () => {
+  const myID = myIdInput.value.trim();
+  if (!myID) return alert("Enter your ID");
+  
+  // Get camera/mic with lower resolution for smooth streaming
+  try {
+    myStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240 },
+      audio: true
+    });
+    myVideo.srcObject = myStream;
+  } catch (err) {
+    return alert("Error accessing camera/mic: " + err);
+  }
 
-// 2️⃣ Create PeerJS connection (free cloud server)
-const peer = new Peer(); // auto-generated ID
+  // Create Peer with custom short ID
+  peer = new Peer(myID, { debug: 2 });
 
-peer.on('open', id => {
-  myIdDisplay.innerText = id;
-  console.log("Your Peer ID:", id);
-  alert("Your Peer ID: " + id);
-});
+  peer.on('open', id => {
+    alert("Your Peer ID: " + id);
+    console.log("Your Peer ID:", id);
+  });
 
-// 3️⃣ Receive calls
-peer.on('call', call => {
-  call.answer(myStream); // answer with your stream
-  call.on('stream', remoteStream => {
-    remoteVideo.srcObject = remoteStream;
+  // When someone calls you
+  peer.on('call', call => {
+    call.answer(myStream); // answer with your stream
+    call.on('stream', remoteStream => {
+      remoteVideo.srcObject = remoteStream;
+    });
   });
 });
 
-// 4️⃣ Make a call
+// Make a call
 callBtn.addEventListener('click', () => {
-  const remotePeerId = peerInput.value.trim();
-  if (!remotePeerId) return alert("Enter a Peer ID to call");
-  const call = peer.call(remotePeerId, myStream);
+  if (!peer) return alert("Start your ID first");
+  const remoteID = peerInput.value.trim();
+  if (!remoteID) return alert("Enter a Peer ID to call");
+
+  const call = peer.call(remoteID, myStream);
   call.on('stream', remoteStream => {
     remoteVideo.srcObject = remoteStream;
   });
