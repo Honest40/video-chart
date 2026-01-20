@@ -3,218 +3,86 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Direct Video Call - GitHub Pages</title>
+<title>Free Smooth Video Call</title>
 <style>
-body { font-family: Arial; text-align: center; background: #f0f0f0; margin: 0; padding: 0; }
-#controls { margin: 20px; }
-#videos { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
-.video-container { margin: 10px; display: flex; flex-direction: column; align-items: center; }
-video { width: 300px; border-radius: 8px; border: 2px solid #333; }
-label { margin-top: 5px; font-weight: bold; }
+body { font-family: Arial; text-align: center; background: #f0f0f0; }
+#videos { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 20px; }
+video { width: 300px; margin: 10px; border-radius: 8px; border: 2px solid #333; }
 input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
-#buttons { margin-top: 10px; }
-#participants { margin-top: 10px; text-align: left; display: inline-block; max-width: 300px; }
-#chat { border: 1px solid #ccc; padding: 10px; width: 300px; height: 200px; overflow-y: auto; margin: 10px auto; background: #fff; text-align: left; }
-#chat-input { width: 200px; }
 </style>
 </head>
 <body>
-<h2>Direct Multi-User Video Call</h2>
+<h2>Free Smooth Video Call</h2>
 
-<div id="controls">
-<input type="text" id="name-input" placeholder="Your name">
-<button id="join-btn">Join Call</button>
+<p>Enter a short custom ID (your name or room):</p>
+<input type="text" id="my-id-input" placeholder="Your ID (unique)">
+<button id="start-btn">Start</button>
+
+<p>Call someone by their ID:</p>
+<input type="text" id="peer-id-input" placeholder="Peer ID to call">
+<button id="call-btn">Call</button>
+
+<div id="videos">
+  <video id="my-video" autoplay muted></video>
+  <video id="remote-video" autoplay></video>
 </div>
 
-<div id="buttons" style="display:none;">
-<button id="mute-btn">Mute</button>
-<button id="leave-btn">Leave Call</button>
-</div>
-
-<div id="participants"><h3>Online:</h3><ul id="participants-list"></ul></div>
-
-<div id="videos"></div>
-
-<div id="chat">
-<div id="messages"></div>
-</div>
-<input type="text" id="chat-input" placeholder="Type message">
-<button id="send-btn">Send</button>
-
-<!-- PeerJS -->
+<!-- PeerJS CDN -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script>
-const joinBtn = document.getElementById('join-btn');
-const nameInput = document.getElementById('name-input');
-const videosDiv = document.getElementById('videos');
-const muteBtn = document.getElementById('mute-btn');
-const leaveBtn = document.getElementById('leave-btn');
-const buttonsDiv = document.getElementById('buttons');
-const participantsList = document.getElementById('participants-list');
-const chatInput = document.getElementById('chat-input');
-const sendBtn = document.getElementById('send-btn');
-const messagesDiv = document.getElementById('messages');
+const myVideo = document.getElementById('my-video');
+const remoteVideo = document.getElementById('remote-video');
+const startBtn = document.getElementById('start-btn');
+const callBtn = document.getElementById('call-btn');
+const myIdInput = document.getElementById('my-id-input');
+const peerInput = document.getElementById('peer-id-input');
 
 let myStream;
-let myPeer;
-let myPeerId;
-let myName;
-let peers = {};
-let connections = {};
-let muted = false;
+let peer;
 
-// Create video element
-function createVideo(id, name, stream){
-  if(document.getElementById('video-'+id)) return;
-  const container = document.createElement('div');
-  container.className = 'video-container';
-  container.id = 'video-'+id;
-  const video = document.createElement('video');
-  video.autoplay = true;
-  video.playsInline = true;
-  video.srcObject = stream;
-  if(id === myPeerId) video.muted = true;
-  const label = document.createElement('label');
-  label.innerText = name;
-  container.appendChild(video);
-  container.appendChild(label);
-  videosDiv.appendChild(container);
-}
-
-// Remove video
-function removeVideo(id){
-  const container = document.getElementById('video-'+id);
-  if(container) container.remove();
-}
-
-// Add participant
-function addParticipant(id, name){
-  if(document.getElementById('p-'+id)) return;
-  const li = document.createElement('li');
-  li.id = 'p-'+id;
-  li.innerText = name;
-  participantsList.appendChild(li);
-}
-
-// Remove participant
-function removeParticipant(id){
-  const li = document.getElementById('p-'+id);
-  if(li) li.remove();
-}
-
-// Chat message
-function addMessage(sender, text){
-  const div = document.createElement('div');
-  div.innerHTML = '<b>'+sender+':</b> '+text;
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-// Get camera/mic
-async function getMedia(){
-  try{
-    myStream = await navigator.mediaDevices.getUserMedia({video:{width:320,height:240}, audio:true});
-  } catch(err){
-    alert("Camera/mic error: "+err);
-  }
-}
-
-// Initialize PeerJS
-function initPeer(){
-  myPeerId = 'user-' + Math.floor(Math.random()*10000);
-  myPeer = new Peer(myPeerId, {debug: 2});
-
-  myPeer.on('open', id=>{
-    myName = nameInput.value.trim();
-    addParticipant(myPeerId, myName);
-    createVideo(myPeerId, myName, myStream);
-    buttonsDiv.style.display='block';
-    discoverPeers();
-  });
-
-  // Receive call
-  myPeer.on('call', call=>{
-    call.answer(myStream);
-    const remoteId = call.peer;
-    call.on('stream', stream=>{
-      createVideo(remoteId, remoteId, stream);
-      addParticipant(remoteId, remoteId);
+// Start with your custom ID
+startBtn.addEventListener('click', async () => {
+  const myID = myIdInput.value.trim();
+  if (!myID) return alert("Enter your ID");
+  
+  // Get camera/mic with lower resolution for smooth streaming
+  try {
+    myStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240 },
+      audio: true
     });
-    call.on('close', ()=>{ removeVideo(remoteId); removeParticipant(remoteId); });
-    peers[remoteId] = call;
-  });
-
-  // Receive data connection
-  myPeer.on('connection', conn=>{
-    conn.on('data', data=>{
-      if(data.type === 'chat') addMessage(data.name, data.text);
-      if(data.type === 'participants') addParticipant(data.id, data.name);
-    });
-    connections[conn.peer] = conn;
-  });
-}
-
-// Discover peers using PeerJS cloud
-function discoverPeers(){
-  setInterval(()=>{
-    fetch('https://peerjs.com/peers').then(res=>res.json()).then(all=>{
-      all.forEach(id=>{
-        if(id !== myPeerId && !peers[id]){
-          const call = myPeer.call(id, myStream);
-          call.on('stream', stream=>{
-            createVideo(id, id, stream);
-            addParticipant(id, id);
-          });
-          call.on('close', ()=>{ removeVideo(id); removeParticipant(id); });
-          peers[id] = call;
-
-          const conn = myPeer.connect(id);
-          conn.on('open', ()=>{ conn.send({type:'participants', id:myPeerId, name:myName}); });
-          connections[id] = conn;
-        }
-      });
-    }).catch(err=>console.log(err));
-  }, 3000);
-}
-
-// Join button
-joinBtn.addEventListener('click', async ()=>{
-  myName = nameInput.value.trim();
-  if(!myName) return alert("Enter your name");
-  await getMedia();
-  initPeer();
-});
-
-// Mute/unmute
-muteBtn.addEventListener('click', ()=>{
-  muted = !muted;
-  myStream.getAudioTracks()[0].enabled = !muted;
-  muteBtn.innerText = muted ? 'Unmute' : 'Mute';
-});
-
-// Leave call
-leaveBtn.addEventListener('click', ()=>{
-  for(let id in peers) if(peers[id] && peers[id].close) peers[id].close();
-  for(let id in connections) if(connections[id] && connections[id].close) connections[id].close();
-  myPeer.destroy();
-  videosDiv.innerHTML='';
-  participantsList.innerHTML='';
-  messagesDiv.innerHTML='';
-  buttonsDiv.style.display='none';
-  peers = {};
-  connections = {};
-  alert("You left the call");
-});
-
-// Send chat
-sendBtn.addEventListener('click', ()=>{
-  const text = chatInput.value.trim();
-  if(!text) return;
-  addMessage(myName, text);
-  for(let id in connections){
-    if(connections[id].open) connections[id].send({type:'chat', name: myName, text:text});
+    myVideo.srcObject = myStream;
+  } catch (err) {
+    return alert("Error accessing camera/mic: " + err);
   }
-  chatInput.value='';
+
+  // Create Peer with custom short ID
+  peer = new Peer(myID, { debug: 2 });
+
+  peer.on('open', id => {
+    alert("Your Peer ID: " + id);
+    console.log("Your Peer ID:", id);
+  });
+
+  // When someone calls you
+  peer.on('call', call => {
+    call.answer(myStream); // answer with your stream
+    call.on('stream', remoteStream => {
+      remoteVideo.srcObject = remoteStream;
+    });
+  });
+});
+
+// Make a call
+callBtn.addEventListener('click', () => {
+  if (!peer) return alert("Start your ID first");
+  const remoteID = peerInput.value.trim();
+  if (!remoteID) return alert("Enter a Peer ID to call");
+
+  const call = peer.call(remoteID, myStream);
+  call.on('stream', remoteStream => {
+    remoteVideo.srcObject = remoteStream;
+  });
 });
 </script>
 </body>
