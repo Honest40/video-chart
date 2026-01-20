@@ -1,141 +1,74 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>HB Live Stream Auto Final</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-
+<title>Free Online Video Call</title>
 <style>
-body{margin:0;font-family:Arial;background:#020617;color:white}
-header{text-align:center;padding:15px;background:black}
-.container{max-width:900px;margin:auto;padding:20px}
-.card{background:#0f172a;padding:15px;border-radius:12px;margin-bottom:15px}
-video{width:100%;background:black;border-radius:12px}
-.status{font-size:14px;opacity:.8;margin-top:5px;text-align:center;}
+body { font-family: Arial; text-align: center; background: #f0f0f0; }
+#videos { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 20px; }
+video { width: 300px; margin: 10px; border-radius: 8px; border: 2px solid #333; }
+input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
 </style>
 </head>
-
 <body>
+<h2>Free Online Video Call</h2>
 
-<header>
-<h2>📡 HB Live Stream Auto Final</h2>
-</header>
+<input type="text" id="peer-id-input" placeholder="Enter Peer ID to call">
+<button id="call-btn">Call</button>
+<p>Your Peer ID will appear here:</p>
+<p id="my-id"></p>
 
-<div class="container">
-<div class="card">
-<b>Status:</b> <span id="status">Idle</span>
-</div>
-<div class="card">
-<video id="video" autoplay playsinline controls></video>
-</div>
+<div id="videos">
+  <video id="my-video" autoplay muted></video>
+  <video id="remote-video" autoplay></video>
 </div>
 
+<!-- PeerJS CDN -->
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script>
-/* FIREBASE CONFIG */
-const firebaseConfig = {
-  apiKey: "AIzaSyBV3Gq6_Xe_i6C1uX8LKKjk-sNy2K13bII",
-  authDomain: "hb-live-chart.firebaseapp.com",
-  projectId: "hb-live-chart",
-  storageBucket: "hb-live-chart.firebasestorage.app",
-  messagingSenderId: "523823843592",
-  appId: "1:523823843592:web:73b868e427306781ed04bd"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const myVideo = document.getElementById('my-video');
+const remoteVideo = document.getElementById('remote-video');
+const callBtn = document.getElementById('call-btn');
+const peerInput = document.getElementById('peer-id-input');
+const myIdDisplay = document.getElementById('my-id');
 
-/* WEBRTC SETUP WITH TURN */
-const pc = new RTCPeerConnection({
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'turn:openrelay.metered.ca:80', username:'openrelayproject', credential:'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' }
-  ]
+let myStream;
+
+// 1️⃣ Get camera & mic
+navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+.then(stream => {
+  myStream = stream;
+  myVideo.srcObject = stream;
+})
+.catch(err => alert("Error accessing camera/mic: " + err));
+
+// 2️⃣ Create PeerJS connection (free cloud server)
+const peer = new Peer(); // auto-generated ID
+
+peer.on('open', id => {
+  myIdDisplay.innerText = id;
+  console.log("Your Peer ID:", id);
+  alert("Your Peer ID: " + id);
 });
 
-const video = document.getElementById("video");
-const statusEl = document.getElementById("status");
-const ROOM_ID = "20262026";
-let roomRef;
+// 3️⃣ Receive calls
+peer.on('call', call => {
+  call.answer(myStream); // answer with your stream
+  call.on('stream', remoteStream => {
+    remoteVideo.srcObject = remoteStream;
+  });
+});
 
-/* When a remote track arrives, set it on the video element */
-pc.ontrack = e => {
-  video.srcObject = e.streams[0];
-};
-
-/* AUTO-CONNECT LOGIC */
-async function initStream() {
-  roomRef = db.collection("rooms").doc(ROOM_ID);
-  const roomSnap = await roomRef.get();
-
-  if (!roomSnap.exists || !roomSnap.data()?.broadcaster) {
-    // This device becomes BROADCASTER
-    statusEl.innerText = "Starting as Broadcaster…";
-
-    const stream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-    video.srcObject = stream;
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    // Create room with broadcaster flag
-    await roomRef.set({ offer, broadcaster: true });
-
-    statusEl.innerText = "LIVE 🔴 Broadcasting…";
-
-    // Listen for viewers’ ICE candidates
-    roomRef.collection("answers").onSnapshot(snapshot => {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === "added") {
-          pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-        }
-      });
-    });
-
-    // Send ICE candidates to Firestore
-    pc.onicecandidate = e => {
-      if (e.candidate) roomRef.collection("candidates").add(e.candidate.toJSON());
-    };
-
-  } else {
-    // This device becomes VIEWER
-    statusEl.innerText = "Starting as Viewer…";
-
-    const offer = roomSnap.data().offer;
-    await pc.setRemoteDescription(offer);
-
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    // Send ICE candidates to Firestore
-    pc.onicecandidate = e => {
-      if (e.candidate) roomRef.collection("answers").add(e.candidate.toJSON());
-    };
-
-    // Listen for broadcaster ICE candidates
-    roomRef.collection("candidates").onSnapshot(snapshot => {
-      snapshot.docChanges().forEach(change => {
-        if (change.type === "added") {
-          pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-        }
-      });
-    });
-
-    statusEl.innerText = "Watching Live ✔";
-  }
-}
-
-/* AUTO START ON PAGE LOAD */
-window.addEventListener("load", () => {
-  initStream().catch(err => {
-    console.error(err);
-    statusEl.innerText = "Error: " + err.message;
+// 4️⃣ Make a call
+callBtn.addEventListener('click', () => {
+  const remotePeerId = peerInput.value.trim();
+  if (!remotePeerId) return alert("Enter a Peer ID to call");
+  const call = peer.call(remotePeerId, myStream);
+  call.on('stream', remoteStream => {
+    remoteVideo.srcObject = remoteStream;
   });
 });
 </script>
-
 </body>
 </html>
