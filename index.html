@@ -22,7 +22,7 @@ input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
 </div>
 <div id="videos"></div>
 
-<!-- PeerJS -->
+<!-- PeerJS CDN -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script>
 const joinBtn = document.getElementById('join-btn');
@@ -34,7 +34,7 @@ let peers = {};
 let myPeer;
 let myPeerId;
 
-// Create video element helper
+// Helper: create video element
 function createVideo(id, stream) {
   const container = document.createElement('div');
   container.className = 'video-container';
@@ -54,7 +54,7 @@ function createVideo(id, stream) {
   videosDiv.appendChild(container);
 }
 
-// Remove video when user leaves
+// Remove video element
 function removeVideo(id) {
   const container = document.getElementById('container-' + id);
   if(container) container.remove();
@@ -67,22 +67,22 @@ async function getMedia() {
       video: { width: 320, height: 240 },
       audio: true
     });
-    myPeerId = roomInput.value.trim() + '-' + Math.floor(Math.random()*1000);
-    createVideo(myPeerId, myStream);
   } catch(err) {
     alert("Camera/mic error: " + err);
   }
 }
 
 // Initialize PeerJS
-function initPeer() {
+function initPeer(room) {
+  myPeerId = room + '-' + Math.floor(Math.random()*1000);
   myPeer = new Peer(myPeerId, { debug: 2 });
 
   myPeer.on('open', id => {
     console.log("My Peer ID:", id);
+    createVideo(myPeerId, myStream);
+    connectToRoom(room);
   });
 
-  // When someone calls you
   myPeer.on('call', call => {
     call.answer(myStream);
     const remoteId = call.peer;
@@ -92,9 +92,8 @@ function initPeer() {
   });
 }
 
-// Periodically check for new peers in the room
-function connectToRoom() {
-  const room = roomInput.value.trim();
+// Connect to peers in room using PeerJS cloud
+function connectToRoom(room) {
   const checkPeers = setInterval(() => {
     fetch('https://peerjs.com/peers')
       .then(res => res.json())
@@ -112,13 +111,12 @@ function connectToRoom() {
   }, 3000);
 }
 
-// Join room
+// Join room button
 joinBtn.addEventListener('click', async () => {
   const room = roomInput.value.trim();
   if(!room) return alert("Enter a room name");
   await getMedia();
-  initPeer();
-  connectToRoom();
+  initPeer(room);
 });
 </script>
 </body>
