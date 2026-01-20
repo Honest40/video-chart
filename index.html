@@ -3,39 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Free Multi-User Video Call</title>
+<title>Advanced Multi-User Video Call</title>
 <style>
-body { font-family: Arial; text-align: center; background: #f0f0f0; margin: 0; padding: 0;}
+body { font-family: Arial; text-align: center; background: #f0f0f0; margin:0; padding:0; }
 #controls { margin: 20px; }
 #videos { display: flex; flex-wrap: wrap; justify-content: center; }
-.video-container { margin: 10px; display: flex; flex-direction: column; align-items: center; }
+.video-container { position: relative; margin: 10px; display: flex; flex-direction: column; align-items: center; }
 video { width: 300px; border-radius: 8px; border: 2px solid #333; }
 label { margin-top: 5px; font-weight: bold; }
-input, button { padding: 8px 12px; margin: 5px; font-size: 16px; }
+button, input { padding: 8px 12px; margin: 5px; font-size: 16px; }
+#buttons { margin-top: 10px; }
 </style>
 </head>
 <body>
-<h2>Free Multi-User Video Call</h2>
+<h2>Advanced Multi-User Video Call</h2>
+
 <div id="controls">
+  <input type="text" id="name-input" placeholder="Your name">
   <input type="text" id="room-input" placeholder="Room name">
   <button id="join-btn">Join Room</button>
 </div>
+
+<div id="buttons" style="display:none;">
+  <button id="mute-btn">Mute</button>
+  <button id="leave-btn">Leave Room</button>
+</div>
+
 <div id="videos"></div>
 
 <!-- PeerJS CDN -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script>
 const joinBtn = document.getElementById('join-btn');
+const nameInput = document.getElementById('name-input');
 const roomInput = document.getElementById('room-input');
 const videosDiv = document.getElementById('videos');
+const muteBtn = document.getElementById('mute-btn');
+const leaveBtn = document.getElementById('leave-btn');
+const buttonsDiv = document.getElementById('buttons');
 
 let myStream;
-let peers = {};
 let myPeer;
 let myPeerId;
+let myName;
+let peers = {};
+let muted = false;
 
-// Helper: create video element
-function createVideo(id, stream) {
+// Create video element with label
+function createVideo(id, name, stream) {
   const container = document.createElement('div');
   container.className = 'video-container';
   container.id = 'container-' + id;
@@ -44,17 +59,17 @@ function createVideo(id, stream) {
   video.autoplay = true;
   video.playsInline = true;
   video.srcObject = stream;
-  if(id === myPeerId) video.muted = true; // mute self
+  if(id === myPeerId) video.muted = true;
 
   const label = document.createElement('label');
-  label.innerText = id;
+  label.innerText = name;
 
   container.appendChild(video);
   container.appendChild(label);
   videosDiv.appendChild(container);
 }
 
-// Remove video element
+// Remove video
 function removeVideo(id) {
   const container = document.getElementById('container-' + id);
   if(container) container.remove();
@@ -79,20 +94,21 @@ function initPeer(room) {
 
   myPeer.on('open', id => {
     console.log("My Peer ID:", id);
-    createVideo(myPeerId, myStream);
+    createVideo(myPeerId, myName, myStream);
+    buttonsDiv.style.display = 'block';
     connectToRoom(room);
   });
 
   myPeer.on('call', call => {
     call.answer(myStream);
     const remoteId = call.peer;
-    call.on('stream', stream => createVideo(remoteId, stream));
+    call.on('stream', stream => createVideo(remoteId, remoteId.split('-')[0], stream));
     call.on('close', () => removeVideo(remoteId));
     peers[remoteId] = call;
   });
 }
 
-// Connect to peers in room using PeerJS cloud
+// Connect to room
 function connectToRoom(room) {
   const checkPeers = setInterval(() => {
     fetch('https://peerjs.com/peers')
@@ -101,7 +117,7 @@ function connectToRoom(room) {
         allPeers.forEach(id => {
           if(id.startsWith(room + '-') && !peers[id] && id !== myPeerId) {
             const call = myPeer.call(id, myStream);
-            call.on('stream', stream => createVideo(id, stream));
+            call.on('stream', stream => createVideo(id, id.split('-')[0], stream));
             call.on('close', () => removeVideo(id));
             peers[id] = call;
           }
@@ -111,12 +127,29 @@ function connectToRoom(room) {
   }, 3000);
 }
 
-// Join room button
+// Join button
 joinBtn.addEventListener('click', async () => {
+  myName = nameInput.value.trim();
   const room = roomInput.value.trim();
-  if(!room) return alert("Enter a room name");
+  if(!myName || !room) return alert("Enter your name and room name");
   await getMedia();
   initPeer(room);
+});
+
+// Mute/unmute
+muteBtn.addEventListener('click', () => {
+  muted = !muted;
+  myStream.getAudioTracks()[0].enabled = !muted;
+  muteBtn.innerText = muted ? "Unmute" : "Mute";
+});
+
+// Leave room
+leaveBtn.addEventListener('click', () => {
+  for(let id in peers) peers[id].close();
+  myPeer.destroy();
+  videosDiv.innerHTML = '';
+  buttonsDiv.style.display = 'none';
+  alert("You left the room");
 });
 </script>
 </body>
